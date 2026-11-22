@@ -608,6 +608,16 @@ function drawInstrument(inst, r, seed) {
 function motif(k, x, y, r, seed) {
   const a = Math.max(0.6, r * 0.04);
   noStroke(); fill(BLUE);
+  // Pinkasol (the 8th song): the album's own face, cut out of the cover
+  // (owner, 2026-11-22); its three dots while the cover loads
+  if (k % 10 === 7 && COVER.complete && COVER.naturalWidth) {
+    const ctx2 = drawingContext, w = COVER.naturalWidth, h = COVER.naturalHeight, d = r * 1.9;
+    ctx2.save();
+    ctx2.beginPath(); ctx2.arc(x, y, d / 2, 0, Math.PI * 2); ctx2.clip();
+    ctx2.drawImage(COVER, w * 0.22, h * 0.03, w * 0.5, h * 0.48, x - d / 2, y - d / 2, d, d);
+    ctx2.restore();
+    return;
+  }
   switch (k % 10) {
     case 0: // an eye with lashes
       roughEllipse(x, y + r * 0.1, r * 0.62, r * 0.5, seed, a);
@@ -1166,9 +1176,13 @@ function drawCompact() {
 }
 
 // The ‹ › under an instrument: small paper buttons, 40 px targets
+// (faded, and doing nothing, when the song has a single part to offer)
+const canStep = (s) => !!s.track && offered(s.track).length > 1;
 function drawArrows(s) {
+  const on = canStep(s);
   s.arrows.forEach((a, i) => {
     const x = a.x + a.w / 2, y = a.cy ?? a.y + a.h / 2;
+    if (!on) drawingContext.globalAlpha = 0.35;
     fill(s.muted ? FADED : PAPER);
     roughEllipse(x, y, 13, 13, 1320 + s.i * 5 + i, 0.6);
     // a thick cut chevron (the font's ‹ › are too thin)
@@ -1176,6 +1190,7 @@ function drawArrows(s) {
     const k = a.dir < 0 ? -1 : 1;
     beginShape(); vertex(x - k * 3, y - 6); vertex(x + k * 3, y); vertex(x - k * 3, y + 6); endShape();
     noStroke();
+    drawingContext.globalAlpha = 1;
   });
 }
 
@@ -1424,7 +1439,7 @@ function drawKeepButton() {
 function stepPart(s, dir) {
   if (!s.track) return;
   const id = s.track, ks = offered(id);
-  if (!ks.length) return;
+  if (ks.length < 2) return; // a single part: nothing to change to
   const i = ks.indexOf(s.part);
   const k = ks[i < 0 ? 0 : (i + dir + ks.length) % ks.length];
   say(`${eng.byId[id].title} : partie ${k + 1}`);
