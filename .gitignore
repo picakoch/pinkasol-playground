@@ -10,3 +10,4 @@ img/*.png
 tools/.venv/
 __pycache__/
 .DS_Store
+dist/*.local.html

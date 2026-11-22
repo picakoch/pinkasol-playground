@@ -1,0 +1,1461 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinkasol — la table du duo</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #174596; overflow: hidden; }
+  canvas { display: block; touch-action: none; }
+  #back { position: absolute; top: 12px; left: 12px; z-index: 2; color: #fdfdfd; text-decoration: none;
+    font: 800 15px/1 "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+  #back:hover { color: #dc8d4e; }
+</style>
+<script>
+// Pinkasol sound engine — shared by the three experiences (duo, ciel,
+// collage). Plain Web Audio, no library. In a tile it is inlined by
+// tools/build.py (a tile is one file); here it is /lib/pinkasol-engine.js.
+//
+//   const eng = await Pinkasol.engine();          // loads the manifest
+//   canvas.onpointerdown = () => eng.unlock();    // first gesture: sound on
+//   const v = eng.play(eng.piece('01_Rototo', 'drums'));
+//   v.level(); v.stop();
+//
+// Time: the first bar-based loop that starts sets the CLOCK (its bar
+// length, its start). Every later piece starts on the clock's next bar
+// (opts.quant: 'bar' | 'half' | 'beat' | 'now'). A bar-based piece whose
+// tempo is within MATCH of the clock's is resampled to it (playbackRate:
+// a slight pitch shift, < 1.4 semitone); further away it plays at its own
+// speed (still starting on a bar line). Rubato pieces ("free") never sync.
+(function () {
+  'use strict';
+
+  const MATCH = 0.08;
+  const MAX_DECODED = 24;
+  const KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+  const ALIASES = { 'C#': 'Db', 'D#': 'Eb', 'F#': 'Gb', 'G#': 'Ab', 'A#': 'Bb' };
+
+  // "G minor" -> its relative major's index on the circle of fifths
+  function fifths(key) {
+    const [note, mode] = String(key).split(' ');
+    let i = KEYS.indexOf(ALIASES[note] || note);
+    if (i < 0) return null;
+    if (mode === 'minor') i = (i + 3) % 12;
+    return (i * 7) % 12;
+  }
+
+  // Semitones to move key `from` so it sits with key `to`: the same key or
+  // its relative ideally, else one fifth apart, with the smallest move
+  // (0 when already close). "G major" -> "Ab minor": +1 ... in -5..+6
+  function keyShift(from, to) {
+    const [note, mode] = String(from).split(' ');
+    const i = KEYS.indexOf(ALIASES[note] || note);
+    if (i < 0 || fifths(to) === null) return 0;
+    let best = 0, bestScore = Infinity;
+    for (let n = -5; n <= 6; n++) {
+      const x = fifths(`${KEYS[(i + n + 12) % 12]} ${mode}`), y = fifths(to);
+      const d = Math.min(Math.abs(x - y) % 12, 12 - (Math.abs(x - y) % 12));
+      // a step on the circle of fifths costs 3 semitones of shift: a big
+      // transposition sounds grainy, a fifth apart is fine
+      const score = d * 3 + Math.abs(n);
+      if (score < bestScore || (score === bestScore && Math.abs(n) < Math.abs(best))) { best = n; bestScore = score; }
+    }
+    return best;
+  }
+
+  // Same key, relative major/minor, or one fifth apart
+  function compatible(a, b) {
+    const x = fifths(a), y = fifths(b);
+    if (x === null || y === null) return true;
+    const d = Math.abs(x - y) % 12;
+    return Math.min(d, 12 - d) <= 1;
+  }
+
+  // Time-stretch keeping the pitch (WSOLA): `alpha` = new length / old.
+  // Plain JS on the main thread (the box allows no worklet): ~50 ms for a
+  // 16 s stereo part. Clean within ±15 %, a little grainy beyond
+  function stretch(ctx, buf, alpha) {
+    const sr = buf.sampleRate, chs = buf.numberOfChannels, inLen = buf.length;
+    const N = 2048, Hs = N / 2, Ha = Hs / alpha, tol = 384, L = 384;
+    const outLen = Math.ceil(inLen * alpha);
+    const out = ctx.createBuffer(chs, outLen, sr);
+    const ins = [], outs = [];
+    for (let c = 0; c < chs; c++) { ins.push(buf.getChannelData(c)); outs.push(out.getChannelData(c)); }
+    const mono = new Float32Array(inLen);
+    for (let c = 0; c < chs; c++) for (let i = 0; i < inLen; i++) mono[i] += ins[c][i];
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N);
+    let prev = 0;
+    for (let k = 0, at = 0; at < outLen; k++, at += Hs) {
+      const nominal = Math.round(k * Ha);
+      let best = Math.min(nominal, inLen - 1);
+      if (k > 0) {
+        // the input frame that best continues the previous one
+        const natural = prev + Hs;
+        let bestC = -Infinity;
+        for (let d = -tol; d <= tol; d += 3) {
+          const s = nominal + d;
+          if (s < 0 || s + L >= inLen || natural + L >= inLen) continue;
+          let c = 0;
+          for (let i = 0; i < L; i += 4) c += mono[natural + i] * mono[s + i];
+          if (c > bestC) { bestC = c; best = s; }
+        }
+      }
+      for (let c = 0; c < chs; c++) {
+        const x = ins[c], y = outs[c];
+        for (let i = 0; i < N; i++) {
+          const a = best + i, b = at + i;
+          if (a >= inLen || b >= outLen) break;
+          // the first frame starts at full level (the loop's first beat)
+          y[b] += x[a] * (k === 0 && i < Hs ? 1 : win[i]);
+        }
+      }
+      prev = best;
+    }
+    return out;
+  }
+
+  async function engine(opts = {}) {
+    const base = opts.base || '/audio/pieces/';
+    const manifest = opts.manifest || (await (await fetch(base + 'manifest.json')).json());
+    const tracks = manifest.tracks;
+    const byId = Object.fromEntries(tracks.map((t) => [t.id, t]));
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AC();
+
+    const master = ctx.createGain();
+    master.gain.value = 0.7;
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -10;
+    limiter.knee.value = 6;
+    limiter.ratio.value = 8;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.2;
+    const masterAnalyser = ctx.createAnalyser();
+    masterAnalyser.fftSize = 1024;
+    master.connect(limiter).connect(masterAnalyser).connect(ctx.destination);
+
+    const decoded = new Map(); // file -> Promise<AudioBuffer>
+    const order = [];
+    const voices = new Set();
+    let clock = null; // { t0, bar, beats, tempo, track }
+    let leading = null; // Promise: the clock's first piece is loading
+    // Tempo matching: bar-based pieces are time-stretched (pitch kept) to
+    // the clock's bar, whatever their tempo. Off: ±MATCH varispeed only
+    let tempoMatch = false;
+    const stretched = new Map(); // "file|alpha" -> Promise<AudioBuffer>
+    // The buffer to play for `p`: stretched to `bar` (tempo matching, or
+    // null) and transposed by p.semitones (stretched by the pitch ratio,
+    // then played that much faster: same length, new pitch)
+    function stretchedFor(p, bar) {
+      const ratio = 2 ** ((p.semitones || 0) / 12);
+      const alphaT = bar ? (bar * p.bars) / p.loop_end : 1;
+      const alpha = alphaT * ratio;
+      if (Math.abs(alpha - 1) < 0.003) return { alpha: 1, alphaT, ratio: 1, buf: load(p) };
+      const key = `${p.file}|${alpha.toFixed(4)}`;
+      if (!stretched.has(key)) {
+        stretched.set(key, load(p).then((b) => stretch(ctx, b, alpha)));
+        if (stretched.size > MAX_DECODED) stretched.delete(stretched.keys().next().value);
+      }
+      return { alpha, alphaT, ratio, buf: stretched.get(key) };
+    }
+    const matches = (p, track) => tempoMatch && clock && !p.free && track.meter === clock.beats;
+    const listeners = new Set();
+    const emit = () => listeners.forEach((f) => f());
+
+    function load(piece) {
+      const f = piece.file;
+      if (!decoded.has(f)) {
+        // manifest.urls: each file's address in the site's media library
+        // (the tile build), else base + file (the playground)
+        decoded.set(f, fetch((manifest.urls && manifest.urls[f]) || base + f)
+          .then((r) => { if (!r.ok) throw new Error(`${f}: ${r.status}`); return r.arrayBuffer(); })
+          .then((b) => ctx.decodeAudioData(b)));
+        order.push(f);
+        while (order.length > MAX_DECODED) {
+          const old = order.shift();
+          if (![...voices].some((v) => v.piece.file === old)) decoded.delete(old);
+          else order.push(old);
+          if (order.length > MAX_DECODED * 2) break;
+        }
+      }
+      return decoded.get(f);
+    }
+
+    const preload = (pieces) => Promise.all(pieces.map((p) => load(p).catch(() => null)));
+
+    function piece(trackId, inst, n = 0) {
+      const list = byId[trackId]?.pieces.filter((p) => p.inst === inst && !p.free) || [];
+      return list[n % Math.max(1, list.length)] || null;
+    }
+    const pieces = (trackId, inst) => byId[trackId]?.pieces.filter((p) => !inst || p.inst === inst) || [];
+    const instruments = (trackId) => [...new Set(pieces(trackId).map((p) => p.inst))];
+    const trackOf = (p) => byId[p.file.split('/')[0]];
+
+    // The next quantised time on the clock, at least `lead` s from now
+    function nextTime(quant = 'bar', lead = 0.06) {
+      const now = ctx.currentTime + lead;
+      if (!clock || quant === 'now') return now;
+      const unit = quant === 'bar' ? clock.bar : quant === 'half' ? clock.bar / 2 : clock.bar / clock.beats;
+      const k = Math.ceil((now - clock.t0) / unit - 1e-6);
+      return clock.t0 + Math.max(0, k) * unit;
+    }
+
+    function play(p, o = {}) {
+      if (!p) return null;
+      const track = trackOf(p);
+      const loop = o.loop ?? !p.free;
+      const synced = !p.free && o.sync !== false;
+      let rate = 1;
+      if (synced && clock && track.meter === clock.beats) {
+        const r = clock.tempo / track.tempo;
+        if (Math.abs(r - 1) <= MATCH) rate = r;
+      }
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.6;
+      const out = o.destination || master;
+      gain.connect(analyser).connect(out);
+      const td = new Uint8Array(analyser.fftSize);
+      const fd = new Uint8Array(analyser.frequencyBinCount);
+
+      const v = {
+        piece: p, track, inst: p.inst, rate, loop, gain, analyser,
+        playing: true, ready: false, startsAt: null, src: null, target: o.gain ?? 1, loopLen: p.loop_end,
+        level() {
+          analyser.getByteTimeDomainData(td);
+          let s = 0;
+          for (let i = 0; i < td.length; i++) { const x = (td[i] - 128) / 128; s += x * x; }
+          return Math.min(1, Math.sqrt(s / td.length) * 3);
+        },
+        spectrum() { analyser.getByteFrequencyData(fd); return fd; },
+        setGain(x, time = 0.15) {
+          v.target = x;
+          if (!v.ready) return; // the fade-in, when scheduled, goes to target
+          // Never cancel the fade-in still to come (a start on the next bar)
+          const from = Math.max(ctx.currentTime, v.startsAt + v.fadeIn);
+          gain.gain.cancelScheduledValues(from);
+          gain.gain.setTargetAtTime(x, from, time / 3);
+        },
+        stop(fade = 0.4, at) {
+          if (!v.playing) return;
+          v.playing = false;
+          voices.delete(v);
+          const t = Math.max(ctx.currentTime, at ?? ctx.currentTime);
+          gain.gain.cancelScheduledValues(t);
+          gain.gain.setTargetAtTime(0, t, fade / 4);
+          if (v.src) v.src.stop(t + fade + 0.1);
+          setTimeout(() => { try { gain.disconnect(); } catch (e) { /* gone */ } }, (t - ctx.currentTime + fade + 0.3) * 1000);
+          // The clock goes when the last loop has really stopped (a stop on
+          // the next bar keeps it until then: what starts meanwhile syncs)
+          const later = Math.max(0, t - ctx.currentTime);
+          const release = () => { if (![...voices].some((x) => x.loop && !x.piece.free)) clock = null; emit(); };
+          if (later > 0.01) setTimeout(release, later * 1000); else release();
+          emit();
+        },
+        // Seconds into the piece's loop now (for visuals), null before start
+        position() {
+          if (!v.startsAt || ctx.currentTime < v.startsAt) return null;
+          const len = v.loopLen / v.rate;
+          const t = ctx.currentTime - v.startsAt;
+          return v.loop ? t % len : Math.min(t, len);
+        },
+      };
+      voices.add(v);
+
+      // The first bar-based loop leads; others started meanwhile wait for it
+      const lead = !clock && !leading && loop && !p.free && o.sync !== false;
+      const loaded = load(p);
+      if (lead) leading = loaded.catch(() => null);
+      Promise.all([loaded, lead ? null : synced ? leading : null]).then(async ([buf]) => {
+        if (!v.playing) return;
+        // Tempo matching: the stretched copy, exactly the clock's bars long;
+        // a transposed piece (p.semitones): stretched by the pitch ratio and
+        // played that much faster. loopLen is in the buffer's seconds
+        const tempoMatched = !lead && synced && matches(p, track);
+        if (tempoMatched || p.semitones) {
+          const s = stretchedFor(p, tempoMatched ? clock.bar : null);
+          buf = await s.buf;
+          v.loopLen = p.loop_end * s.alpha;
+          rate = s.ratio; v.rate = rate;
+          if (tempoMatched) v.stretched = s.alphaT;
+          v.semitones = p.semitones || 0;
+          if (!v.playing) return;
+        }
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        if (loop) { src.loop = true; src.loopStart = 0; src.loopEnd = Math.min(v.loopLen, buf.duration); }
+        src.connect(gain);
+        // (not on a transposed piece: varispeed would bend its new pitch)
+        if (!lead && synced && !v.stretched && !p.semitones && clock && track.meter === clock.beats) {
+          const r = clock.tempo / track.tempo;
+          if (Math.abs(r - 1) <= MATCH) { rate *= r; v.rate = rate; }
+        }
+        src.playbackRate.value = rate;
+        const when = o.at != null ? Math.max(o.at, ctx.currentTime + 0.01)
+          : lead ? ctx.currentTime + 0.05 : synced ? nextTime(o.quant || 'bar') : ctx.currentTime + 0.03;
+        if (lead) {
+          const real = v.loopLen / rate; // the loop in real seconds
+          clock = { t0: when, bar: real / p.bars, beats: track.meter, tempo: track.tempo * (p.loop_end / real), track: track.id };
+          leading = null;
+        }
+        src.start(when, 0);
+        if (!loop) src.stop(when + (buf.duration) / rate);
+        src.onended = () => { if (v.playing && !loop) { v.playing = false; voices.delete(v); if (![...voices].some((x) => x.loop && !x.piece.free)) clock = null; emit(); } };
+        v.fadeIn = o.fadeIn ?? 0.02;
+        gain.gain.setValueAtTime(0, when);
+        gain.gain.linearRampToValueAtTime(v.target, when + v.fadeIn);
+        v.src = src; v.startsAt = when; v.ready = true;
+        emit();
+      }).catch((e) => { if (lead) leading = null; console.error(e); v.stop(0); });
+      emit();
+      return v;
+    }
+
+    // A track's part: its stems, loaded first, then started on the same
+    // sample (next bar of the clock, or now when there is none; the first
+    // one leads). `olds` stop at that moment. Returns the voices
+    // o.immediate: now, not on the next bar: the clock restarts from this
+    // moment (the first piece leads) and `olds` fade out in 30 ms. Give it
+    // the whole table so every instrument restarts together
+    async function playTogether(list, o = {}, olds = []) {
+      list = list.filter(Boolean);
+      await Promise.all(list.map((p) => load(p)));
+      if (o.immediate) { clock = null; leading = null; }
+      // Stretch before choosing the moment: no piece may start late. The
+      // first piece leads when there is no clock (put the drums first)
+      // Prepare every stretched/transposed buffer exactly as play() will
+      // ask for it, before choosing the moment: no piece may start late.
+      // The first piece leads when there is no clock (put the drums first)
+      const head = list[0];
+      const bar = clock ? clock.bar : head.loop_end / head.bars;
+      const beats = clock ? clock.beats : trackOf(head).meter;
+      await Promise.all(list.map((p) => {
+        const leads = !clock && p === head;
+        const matched = tempoMatch && !leads && !p.free && trackOf(p).meter === beats;
+        return matched || p.semitones ? stretchedFor(p, matched ? bar : null).buf : null;
+      }));
+      const at = clock ? nextTime('bar') : ctx.currentTime + (o.immediate ? 0.04 : 0.08);
+      olds.filter((v) => v && v.playing).forEach((v) => v.stop(o.fade ?? (o.immediate ? 0.03 : 0.25), at));
+      return list.map((p) => play(p, { ...o, at }));
+    }
+
+    // A part of a track as pieces the engine plays: { inst: piece }
+    function part(trackId, k) {
+      const t = byId[trackId];
+      const pt = t?.parts?.[k];
+      if (!pt) return null;
+      return Object.fromEntries(Object.entries(pt.files).map(([inst, file]) => [inst,
+        { inst, file, loop_end: pt.loop_end, bars: pt.bars, free: false, part: k }]));
+    }
+
+    // Replace voice `old` by piece `p` on the next bar: a crossfade
+    function swap(old, p, o = {}) {
+      const v = play(p, o);
+      if (old && old.playing) {
+        const t = clock ? nextTime('bar') : ctx.currentTime;
+        old.stop(o.fade ?? 0.25, t);
+      }
+      return v;
+    }
+
+    function level() {
+      const td = new Uint8Array(masterAnalyser.fftSize);
+      masterAnalyser.getByteTimeDomainData(td);
+      let s = 0;
+      for (let i = 0; i < td.length; i++) { const x = (td[i] - 128) / 128; s += x * x; }
+      return Math.min(1, Math.sqrt(s / td.length) * 3);
+    }
+    const spectrumData = new Uint8Array(masterAnalyser.frequencyBinCount);
+    const spectrum = () => { masterAnalyser.getByteFrequencyData(spectrumData); return spectrumData; };
+
+    // Beat phase of the clock now: { bar: 0..1, beat: 0..1, n: beat index }
+    function phase() {
+      if (!clock || ctx.currentTime < clock.t0) return null;
+      const t = ctx.currentTime - clock.t0;
+      const beat = clock.bar / clock.beats;
+      return { bar: (t % clock.bar) / clock.bar, beat: (t % beat) / beat, n: Math.floor((t % clock.bar) / beat) };
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) ctx.suspend(); else if (voices.size) ctx.resume();
+    });
+
+    return {
+      ctx, tracks, byId, palette: manifest.palette,
+      unlock: () => (ctx.state === 'running' ? Promise.resolve() : ctx.resume()),
+      load, preload, piece, pieces, instruments, play, playTogether, part, swap, nextTime, phase, level, spectrum,
+      compatible, keyShift, trackOf,
+      get clock() { return clock; },
+      get tempoMatch() { return tempoMatch; },
+      set tempoMatch(x) { tempoMatch = !!x; },
+      // Forget the clock: the next piece (or playTogether's first) leads
+      resetClock() { clock = null; leading = null; },
+      get voices() { return [...voices]; },
+      stopAll(fade = 0.5) { [...voices].forEach((v) => v.stop(fade)); },
+      onchange(f) { listeners.add(f); return () => listeners.delete(f); },
+    };
+  }
+
+  window.Pinkasol = { engine, compatible, keyShift };
+})();
+
+</script>
+<script>
+window.PINKASOL_TILE = true;
+const PINKASOL_MANIFEST = {"palette":{"blue":"#174596","paper":"#fdfdfd","orange":"#dc8d4e"},"tracks":[{"id":"01_Rototo","title":"Rototo","key":"Ab minor","meter":4,"tempo":117.45,"bar_seconds":2.009,"parts":[{"start":3.146,"end":19.383,"bars":8,"loop_end":16.237,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"01_Rototo/p1-drums.mp3","bass":"01_Rototo/p1-bass.mp3","piano":"01_Rototo/p1-piano.mp3","synth":"01_Rototo/p1-synth.mp3"}},{"start":59.391,"end":75.442,"bars":8,"loop_end":16.051,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"01_Rototo/p2-drums.mp3","bass":"01_Rototo/p2-bass.mp3","piano":"01_Rototo/p2-piano.mp3","synth":"01_Rototo/p2-synth.mp3"}},{"start":119.055,"end":126.99,"bars":4,"loop_end":7.935,"playing":["drums","piano"],"all":false,"files":{"drums":"01_Rototo/p3-drums.mp3","bass":"01_Rototo/p3-bass.mp3","piano":"01_Rototo/p3-piano.mp3","synth":"01_Rototo/p3-synth.mp3"}},{"start":137.009,"end":152.625,"bars":8,"loop_end":15.616,"playing":["drums","piano"],"all":false,"files":{"drums":"01_Rototo/p4-drums.mp3","bass":"01_Rototo/p4-bass.mp3","piano":"01_Rototo/p4-piano.mp3","synth":"01_Rototo/p4-synth.mp3"}},{"start":170.58,"end":178.631,"bars":4,"loop_end":8.051,"playing":["piano","synth"],"all":false,"files":{"drums":"01_Rototo/p5-drums.mp3","bass":"01_Rototo/p5-bass.mp3","piano":"01_Rototo/p5-piano.mp3","synth":"01_Rototo/p5-synth.mp3"}},{"start":178.631,"end":194.519,"bars":8,"loop_end":15.888,"playing":["piano","synth"],"all":false,"files":{"drums":"01_Rototo/p6-drums.mp3","bass":"01_Rototo/p6-bass.mp3","piano":"01_Rototo/p6-piano.mp3","synth":"01_Rototo/p6-synth.mp3"}}]},{"id":"02_Arroyoyo","title":"Arroyoyo","key":"F minor","meter":4,"tempo":136.0,"bar_seconds":1.765,"parts":[{"start":30.378,"end":37.158,"bars":4,"loop_end":6.78,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"02_Arroyoyo/p1-drums.mp3","bass":"02_Arroyoyo/p1-bass.mp3","piano":"02_Arroyoyo/p1-piano.mp3","synth":"02_Arroyoyo/p1-synth.mp3"}},{"start":42.603,"end":49.424,"bars":4,"loop_end":6.821,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"02_Arroyoyo/p2-drums.mp3","bass":"02_Arroyoyo/p2-bass.mp3","piano":"02_Arroyoyo/p2-piano.mp3","synth":"02_Arroyoyo/p2-synth.mp3"}},{"start":102.725,"end":117.447,"bars":8,"loop_end":14.722,"playing":["drums","piano"],"all":false,"files":{"drums":"02_Arroyoyo/p3-drums.mp3","bass":"02_Arroyoyo/p3-bass.mp3","piano":"02_Arroyoyo/p3-piano.mp3","synth":"02_Arroyoyo/p3-synth.mp3"}},{"start":158.563,"end":165.523,"bars":4,"loop_end":6.96,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"02_Arroyoyo/p4-drums.mp3","bass":"02_Arroyoyo/p4-bass.mp3","piano":"02_Arroyoyo/p4-piano.mp3","synth":"02_Arroyoyo/p4-synth.mp3"}},{"start":168.943,"end":175.972,"bars":4,"loop_end":7.029,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"02_Arroyoyo/p5-drums.mp3","bass":"02_Arroyoyo/p5-bass.mp3","piano":"02_Arroyoyo/p5-piano.mp3","synth":"02_Arroyoyo/p5-synth.mp3"}}]},{"id":"03_Clarita","title":"Clarita","key":"G major","meter":4,"tempo":123.05,"bar_seconds":1.997,"parts":[{"start":0.07,"end":16.028,"bars":8,"loop_end":15.958,"playing":["piano"],"all":false,"files":{"drums":"03_Clarita/p1-drums.mp3","piano":"03_Clarita/p1-piano.mp3","synth":"03_Clarita/p1-synth.mp3"}},{"start":50.022,"end":65.927,"bars":8,"loop_end":15.905,"playing":["piano"],"all":false,"files":{"drums":"03_Clarita/p2-drums.mp3","piano":"03_Clarita/p2-piano.mp3","synth":"03_Clarita/p2-synth.mp3"}},{"start":111.026,"end":119.066,"bars":4,"loop_end":8.04,"playing":["drums"],"all":false,"files":{"drums":"03_Clarita/p3-drums.mp3","piano":"03_Clarita/p3-piano.mp3","synth":"03_Clarita/p3-synth.mp3"}},{"start":158.54,"end":174.556,"bars":8,"loop_end":16.016,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"03_Clarita/p4-drums.mp3","piano":"03_Clarita/p4-piano.mp3","synth":"03_Clarita/p4-synth.mp3"}},{"start":174.556,"end":190.578,"bars":8,"loop_end":16.022,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"03_Clarita/p5-drums.mp3","piano":"03_Clarita/p5-piano.mp3","synth":"03_Clarita/p5-synth.mp3"}},{"start":214.291,"end":230.29,"bars":8,"loop_end":15.999,"playing":["drums","piano"],"all":false,"files":{"drums":"03_Clarita/p6-drums.mp3","piano":"03_Clarita/p6-piano.mp3","synth":"03_Clarita/p6-synth.mp3"}}]},{"id":"04_Noisette","title":"Noisette","key":"F minor","meter":4,"tempo":95.7,"bar_seconds":2.461,"parts":[{"start":15.673,"end":35.265,"bars":8,"loop_end":19.592,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"04_Noisette/p1-drums.mp3","bass":"04_Noisette/p1-bass.mp3","piano":"04_Noisette/p1-piano.mp3","synth":"04_Noisette/p1-synth.mp3"}},{"start":40.171,"end":59.751,"bars":8,"loop_end":19.58,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"04_Noisette/p2-drums.mp3","bass":"04_Noisette/p2-bass.mp3","piano":"04_Noisette/p2-piano.mp3","synth":"04_Noisette/p2-synth.mp3"}},{"start":94.018,"end":113.598,"bars":8,"loop_end":19.58,"playing":["drums","piano"],"all":false,"files":{"drums":"04_Noisette/p3-drums.mp3","bass":"04_Noisette/p3-bass.mp3","piano":"04_Noisette/p3-piano.mp3","synth":"04_Noisette/p3-synth.mp3"}},{"start":125.98,"end":146.042,"bars":8,"loop_end":20.062,"playing":["piano","synth"],"all":false,"files":{"drums":"04_Noisette/p4-drums.mp3","bass":"04_Noisette/p4-bass.mp3","piano":"04_Noisette/p4-piano.mp3","synth":"04_Noisette/p4-synth.mp3"}},{"start":190.2,"end":210.123,"bars":8,"loop_end":19.923,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"04_Noisette/p5-drums.mp3","bass":"04_Noisette/p5-bass.mp3","piano":"04_Noisette/p5-piano.mp3","synth":"04_Noisette/p5-synth.mp3"}},{"start":225.025,"end":234.951,"bars":4,"loop_end":9.926,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"04_Noisette/p6-drums.mp3","bass":"04_Noisette/p6-bass.mp3","piano":"04_Noisette/p6-piano.mp3","synth":"04_Noisette/p6-synth.mp3"}}]},{"id":"05_Malavista","title":"Malavista","key":"F minor","meter":13,"tempo":234.91,"bar_seconds":3.413,"parts":[{"start":6.827,"end":20.503,"bars":4,"loop_end":13.676,"playing":["drums","piano"],"all":false,"files":{"drums":"05_Malavista/p1-drums.mp3","bass":"05_Malavista/p1-bass.mp3","piano":"05_Malavista/p1-piano.mp3","synth":"05_Malavista/p1-synth.mp3"}},{"start":44.426,"end":58.137,"bars":4,"loop_end":13.711,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"05_Malavista/p2-drums.mp3","bass":"05_Malavista/p2-bass.mp3","piano":"05_Malavista/p2-piano.mp3","synth":"05_Malavista/p2-synth.mp3"}},{"start":106.046,"end":119.74,"bars":4,"loop_end":13.694,"playing":["drums","bass","piano","synth"],"all":false,"files":{"drums":"05_Malavista/p3-drums.mp3","bass":"05_Malavista/p3-bass.mp3","piano":"05_Malavista/p3-piano.mp3","synth":"05_Malavista/p3-synth.mp3"}},{"start":123.164,"end":136.829,"bars":4,"loop_end":13.665,"playing":["drums","bass","piano","synth"],"all":true,"files":{"drums":"05_Malavista/p4-drums.mp3","bass":"05_Malavista/p4-bass.mp3","piano":"05_Malavista/p4-piano.mp3","synth":"05_Malavista/p4-synth.mp3"}}]},{"id":"06_Exit_B","title":"Exit B","key":"C minor","meter":4,"tempo":127.0,"bar_seconds":1.881,"parts":[{"start":23.824,"end":39.068,"bars":8,"loop_end":15.244,"playing":["drums","piano"],"all":false,"files":{"drums":"06_Exit_B/p1-drums.mp3","piano":"06_Exit_B/p1-piano.mp3","synth":"06_Exit_B/p1-synth.mp3"}},{"start":84.573,"end":99.55,"bars":8,"loop_end":14.977,"playing":["drums","piano"],"all":false,"files":{"drums":"06_Exit_B/p2-drums.mp3","piano":"06_Exit_B/p2-piano.mp3","synth":"06_Exit_B/p2-synth.mp3"}},{"start":138.443,"end":153.199,"bars":8,"loop_end":14.756,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"06_Exit_B/p3-drums.mp3","piano":"06_Exit_B/p3-piano.mp3","synth":"06_Exit_B/p3-synth.mp3"}},{"start":171.961,"end":187.176,"bars":8,"loop_end":15.215,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"06_Exit_B/p4-drums.mp3","piano":"06_Exit_B/p4-piano.mp3","synth":"06_Exit_B/p4-synth.mp3"}},{"start":187.176,"end":202.437,"bars":8,"loop_end":15.261,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"06_Exit_B/p5-drums.mp3","piano":"06_Exit_B/p5-piano.mp3","synth":"06_Exit_B/p5-synth.mp3"}},{"start":226.83,"end":234.504,"bars":4,"loop_end":7.674,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"06_Exit_B/p6-drums.mp3","piano":"06_Exit_B/p6-piano.mp3","synth":"06_Exit_B/p6-synth.mp3"}}]},{"id":"07_Asperges","title":"Asperges","key":"D major","meter":4,"tempo":117.45,"bar_seconds":1.997,"parts":[{"start":8.052,"end":24.056,"bars":8,"loop_end":16.004,"playing":["bass","piano"],"all":false,"files":{"drums":"07_Asperges/p1-drums.mp3","bass":"07_Asperges/p1-bass.mp3","piano":"07_Asperges/p1-piano.mp3","synth":"07_Asperges/p1-synth.mp3"}},{"start":76.539,"end":92.52,"bars":8,"loop_end":15.981,"playing":["drums","piano"],"all":false,"files":{"drums":"07_Asperges/p2-drums.mp3","bass":"07_Asperges/p2-bass.mp3","piano":"07_Asperges/p2-piano.mp3","synth":"07_Asperges/p2-synth.mp3"}},{"start":98.58,"end":114.55,"bars":8,"loop_end":15.97,"playing":["drums","piano"],"all":false,"files":{"drums":"07_Asperges/p3-drums.mp3","bass":"07_Asperges/p3-bass.mp3","piano":"07_Asperges/p3-piano.mp3","synth":"07_Asperges/p3-synth.mp3"}},{"start":161.054,"end":177.058,"bars":8,"loop_end":16.004,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"07_Asperges/p4-drums.mp3","bass":"07_Asperges/p4-bass.mp3","piano":"07_Asperges/p4-piano.mp3","synth":"07_Asperges/p4-synth.mp3"}},{"start":211.058,"end":227.045,"bars":8,"loop_end":15.987,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"07_Asperges/p5-drums.mp3","bass":"07_Asperges/p5-bass.mp3","piano":"07_Asperges/p5-piano.mp3","synth":"07_Asperges/p5-synth.mp3"}},{"start":239.055,"end":255.036,"bars":8,"loop_end":15.981,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"07_Asperges/p6-drums.mp3","bass":"07_Asperges/p6-bass.mp3","piano":"07_Asperges/p6-piano.mp3","synth":"07_Asperges/p6-synth.mp3"}},{"start":257.138,"end":273.293,"bars":8,"loop_end":16.155,"playing":["bass","piano"],"all":false,"files":{"drums":"07_Asperges/p7-drums.mp3","bass":"07_Asperges/p7-bass.mp3","piano":"07_Asperges/p7-piano.mp3","synth":"07_Asperges/p7-synth.mp3"}}]},{"id":"08_Pinkasol","title":"Pinkasol","key":"G minor","meter":4,"tempo":123.05,"bar_seconds":1.974,"parts":[{"start":28.026,"end":36.026,"bars":4,"loop_end":8.0,"playing":["drums","piano"],"all":false,"files":{"drums":"08_Pinkasol/p1-drums.mp3","bass":"08_Pinkasol/p1-bass.mp3","piano":"08_Pinkasol/p1-piano.mp3","synth":"08_Pinkasol/p1-synth.mp3"}},{"start":56.018,"end":71.999,"bars":8,"loop_end":15.981,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"08_Pinkasol/p2-drums.mp3","bass":"08_Pinkasol/p2-bass.mp3","piano":"08_Pinkasol/p2-piano.mp3","synth":"08_Pinkasol/p2-synth.mp3"}},{"start":94.012,"end":110.005,"bars":8,"loop_end":15.993,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"08_Pinkasol/p3-drums.mp3","bass":"08_Pinkasol/p3-bass.mp3","piano":"08_Pinkasol/p3-piano.mp3","synth":"08_Pinkasol/p3-synth.mp3"}},{"start":179.554,"end":194.647,"bars":8,"loop_end":15.093,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"08_Pinkasol/p4-drums.mp3","bass":"08_Pinkasol/p4-bass.mp3","piano":"08_Pinkasol/p4-piano.mp3","synth":"08_Pinkasol/p4-synth.mp3"}},{"start":200.214,"end":214.86,"bars":8,"loop_end":14.646,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"08_Pinkasol/p5-drums.mp3","bass":"08_Pinkasol/p5-bass.mp3","piano":"08_Pinkasol/p5-piano.mp3","synth":"08_Pinkasol/p5-synth.mp3"}}]},{"id":"09_Cosmos","title":"Cosmos","key":"Bb minor","meter":4,"tempo":99.38,"bar_seconds":2.438,"parts":[{"start":31.695,"end":51.281,"bars":8,"loop_end":19.586,"playing":["drums","piano"],"all":false,"files":{"drums":"09_Cosmos/p1-drums.mp3","piano":"09_Cosmos/p1-piano.mp3","synth":"09_Cosmos/p1-synth.mp3"}},{"start":51.281,"end":61.022,"bars":4,"loop_end":9.741,"playing":["drums","piano"],"all":false,"files":{"drums":"09_Cosmos/p2-drums.mp3","piano":"09_Cosmos/p2-piano.mp3","synth":"09_Cosmos/p2-synth.mp3"}},{"start":129.149,"end":148.747,"bars":8,"loop_end":19.598,"playing":["piano"],"all":false,"files":{"drums":"09_Cosmos/p3-drums.mp3","piano":"09_Cosmos/p3-piano.mp3","synth":"09_Cosmos/p3-synth.mp3"}},{"start":185.272,"end":204.521,"bars":8,"loop_end":19.249,"playing":["piano","synth"],"all":false,"files":{"drums":"09_Cosmos/p4-drums.mp3","piano":"09_Cosmos/p4-piano.mp3","synth":"09_Cosmos/p4-synth.mp3"}},{"start":211.859,"end":231.468,"bars":8,"loop_end":19.609,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"09_Cosmos/p5-drums.mp3","piano":"09_Cosmos/p5-piano.mp3","synth":"09_Cosmos/p5-synth.mp3"}},{"start":246.12,"end":265.77,"bars":8,"loop_end":19.65,"playing":["drums","piano"],"all":false,"files":{"drums":"09_Cosmos/p6-drums.mp3","piano":"09_Cosmos/p6-piano.mp3","synth":"09_Cosmos/p6-synth.mp3"}}]},{"id":"10_El_Tigre","title":"El Tigre","key":"G major","meter":4,"tempo":136.0,"bar_seconds":1.788,"parts":[{"start":31.956,"end":46.829,"bars":8,"loop_end":14.873,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p1-drums.mp3","piano":"10_El_Tigre/p1-piano.mp3","synth":"10_El_Tigre/p1-synth.mp3"}},{"start":81.496,"end":96.073,"bars":8,"loop_end":14.577,"playing":["drums","piano"],"all":false,"files":{"drums":"10_El_Tigre/p2-drums.mp3","piano":"10_El_Tigre/p2-piano.mp3","synth":"10_El_Tigre/p2-synth.mp3"}},{"start":208.324,"end":222.958,"bars":8,"loop_end":14.634,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"10_El_Tigre/p3-drums.mp3","piano":"10_El_Tigre/p3-piano.mp3","synth":"10_El_Tigre/p3-synth.mp3"}},{"start":232.13,"end":246.787,"bars":8,"loop_end":14.657,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p4-drums.mp3","piano":"10_El_Tigre/p4-piano.mp3","synth":"10_El_Tigre/p4-synth.mp3"}},{"start":347.58,"end":361.744,"bars":8,"loop_end":14.164,"playing":["drums","piano"],"all":false,"files":{"drums":"10_El_Tigre/p5-drums.mp3","piano":"10_El_Tigre/p5-piano.mp3","synth":"10_El_Tigre/p5-synth.mp3"}},{"start":382.682,"end":396.794,"bars":8,"loop_end":14.112,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p6-drums.mp3","piano":"10_El_Tigre/p6-piano.mp3","synth":"10_El_Tigre/p6-synth.mp3"}},{"start":427.137,"end":441.249,"bars":8,"loop_end":14.112,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p7-drums.mp3","piano":"10_El_Tigre/p7-piano.mp3","synth":"10_El_Tigre/p7-synth.mp3"}}]}],"urls":{}};
+</script>
+</head>
+<body>
+
+<script>
+// La table du duo — the tracks are cards. Drop one on an instrument: that
+// instrument plays its stem of a PART of the track (a passage cut on bars,
+// the same bars for every stem). Instruments holding the same track always
+// play the same part, started together on the same sample: one track on the
+// table = the passage as recorded. The strip under the instruments shows each
+// track's parts where they are in the song; click one to go there (next bar).
+// Click an instrument: mute / unmute it. The big button: stop / play the
+// table as it is (or the space bar). The die: a random table. Only clicks
+// and drags (mouse and touch). Parts are numbered in song order; a row only
+// offers the parts where its instruments really play (manifest `playing`).
+const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', FADED = '#7f97c7', DIM = '#b9c6e2';
+let INK = PAPER; // the instruments' paper: faded while silent or muted
+// p5 wraps the name in quotes: close and reopen them to pass a fallback list
+const FONT = 'Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif, "x';
+const INSTS = ['piano', 'drums', 'synth', 'bass'];
+const NAMES = { piano: 'PIANO', drums: 'BATTERIE', synth: 'SYNTHÉ', bass: 'BASSE' };
+const ARTICLE = { piano: 'le piano', drums: 'la batterie', synth: 'le synthé', bass: 'la basse' };
+const DEFAULT_TRACK = '08_Pinkasol';
+const HINT0 = 'Cliquez, glissez — le son arrive au premier geste';
+const HINT1 = 'Glissez une carte sur un instrument · touchez-le : couper / remettre · double-clic : tout le morceau · espace : lecture / arrêt';
+
+let eng = null, loadError = null, started = false;
+// Both switches on by default (owner, 2026-11-22): tempo on the drums, the
+// synth in the piano's key
+let running = false, opSeq = 0, tempoOn = true, keyOn = true;
+let hint = HINT0, hintUntil = 0, tempHint = '';
+const VOL_MAX = 1.2;
+const spots = INSTS.map((inst, i) => ({ inst, i, track: null, part: 0, muted: false, vol: 1, voice: null, pending: 0,
+  cx: 0, cy: 0, w: 0, h: 0, pulse: 0, shake: 0 }));
+let cards = [];
+let drag = null;
+const anims = [];
+let lastTap = { id: null, t: 0 };
+let hatPop = -1e9; // when the random button was last pressed
+const COVER = new Image(); // the Pinkasol cover, for the random button
+COVER.src = "https://media.tilefolio.com/i1/medium_pinkasol_cover_h_0f5f9e0dd8.jpg.webp";
+let lastSliderTap = { s: null, t: 0 };
+let hintY = 0, stripY = 0, rowH = 40, pad = 10;
+const buttons = { play: { x: 0, y: 0, r: 22 }, dice: { x: 0, y: 0, r: 18 }, tempo: { x: 0, y: 0, w: 0, h: 0 }, key: { x: 0, y: 0, w: 0, h: 0 } };
+let chips = []; // the strip's clickable parts, rebuilt each frame
+window.chips = chips;
+
+// ---------- rough, hand-cut shapes ----------
+function jit(seed, i, amp) {
+  return [(noise(seed + i * 0.37, 1.3) - 0.5) * 2 * amp, (noise(seed + i * 0.37, 7.1) - 0.5) * 2 * amp];
+}
+function roughShape(pts, seed, amp) {
+  beginShape();
+  let idx = 0;
+  const step = Math.max(4, amp * 4);
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
+    const k = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / step));
+    for (let j = 0; j < k; j++) {
+      const [dx, dy] = jit(seed, idx++, amp);
+      vertex(x1 + (x2 - x1) * j / k + dx, y1 + (y2 - y1) * j / k + dy);
+    }
+  }
+  endShape(CLOSE);
+}
+function roughRect(x, y, w, h, seed, amp) {
+  roughShape([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], seed, amp);
+}
+function roughEllipse(cx, cy, rx, ry, seed, amp, a0 = 0, a1 = TWO_PI) {
+  const n = Math.max(14, Math.floor((a1 - a0) * Math.max(rx, ry) / Math.max(3, amp * 3)));
+  const full = a1 - a0 >= TWO_PI - 1e-6;
+  beginShape();
+  for (let i = 0; i <= (full ? n - 1 : n); i++) {
+    const a = a0 + (a1 - a0) * i / n;
+    const d = (noise(seed + i * 0.41, 3.7) - 0.5) * 2 * amp;
+    vertex(cx + Math.cos(a) * (rx + d), cy + Math.sin(a) * (ry + d));
+  }
+  endShape(CLOSE);
+}
+function star(x, y, R, seed, arms = 6) {
+  const pts = [];
+  for (let i = 0; i < arms * 2; i++) {
+    const a = -HALF_PI + i * PI / arms + (noise(seed + i, 2.2) - 0.5) * 0.25;
+    const r = (i % 2 ? R * 0.34 : R * (0.85 + noise(seed + i, 5.5) * 0.3));
+    pts.push([x + Math.cos(a) * r, y + Math.sin(a) * r]);
+  }
+  beginShape(); pts.forEach(([a, b]) => vertex(a, b)); endShape(CLOSE);
+}
+
+// ---------- instruments (linocut silhouettes, unit r) ----------
+function keys(x, y, w, h, n, seed, amp) {
+  fill(BLUE); roughRect(x, y, w, h, seed, amp);
+  const kw = w / n;
+  fill(INK);
+  for (let i = 0; i < n; i++) roughRect(x + i * kw + kw * 0.14, y + h * 0.1, kw * 0.72, h * 0.8, seed + 50 + i * 3, amp * 0.4);
+  fill(BLUE);
+  const pattern = [1, 1, 0, 1, 1, 1, 0];
+  for (let i = 0; i < n - 1; i++) if (pattern[i % 7]) rect(x + (i + 1) * kw - kw * 0.22, y + h * 0.1, kw * 0.44, h * 0.48);
+}
+function drawInstrument(inst, r, seed) {
+  const a = Math.max(0.8, r * 0.025);
+  noStroke();
+  if (inst === 'piano') {
+    fill(INK);
+    roughShape([[-0.95 * r, -0.62 * r], [0.95 * r, -0.62 * r], [0.95 * r, 0.42 * r], [-0.95 * r, 0.42 * r]], seed, a);
+    roughRect(-0.86 * r, 0.38 * r, 0.13 * r, 0.42 * r, seed + 9, a);
+    roughRect(0.73 * r, 0.38 * r, 0.13 * r, 0.42 * r, seed + 11, a);
+    fill(BLUE);
+    roughRect(-0.8 * r, -0.5 * r, 1.6 * r, 0.07 * r, seed + 3, a * 0.6);
+    roughRect(-0.35 * r, -0.36 * r, 0.7 * r, 0.22 * r, seed + 5, a * 0.6);
+    keys(-0.86 * r, 0.0 * r, 1.72 * r, 0.32 * r, 14, seed + 20, a);
+  } else if (inst === 'drums') {
+    fill(INK);
+    roughRect(-0.79 * r, -0.7 * r, 0.045 * r, 1.5 * r, seed + 1, a * 0.5);
+    roughRect(0.76 * r, -0.66 * r, 0.045 * r, 1.46 * r, seed + 2, a * 0.5);
+    roughEllipse(-0.77 * r, -0.72 * r, 0.3 * r, 0.065 * r, seed + 3, a * 0.6);
+    roughEllipse(0.78 * r, -0.68 * r, 0.26 * r, 0.06 * r, seed + 4, a * 0.6);
+    roughEllipse(-0.42 * r, -0.28 * r, 0.24 * r, 0.21 * r, seed + 5, a);
+    roughEllipse(0.4 * r, -0.3 * r, 0.22 * r, 0.19 * r, seed + 6, a);
+    roughEllipse(0.66 * r, 0.18 * r, 0.22 * r, 0.1 * r, seed + 7, a);
+    roughEllipse(0, 0.3 * r, 0.47 * r, 0.47 * r, seed + 8, a);
+    fill(BLUE);
+    roughEllipse(-0.42 * r, -0.28 * r, 0.14 * r, 0.12 * r, seed + 9, a * 0.6);
+    roughEllipse(0.4 * r, -0.3 * r, 0.12 * r, 0.1 * r, seed + 10, a * 0.6);
+    roughEllipse(0, 0.3 * r, 0.33 * r, 0.33 * r, seed + 11, a * 0.8);
+    fill(INK);
+    roughEllipse(0, 0.3 * r, 0.11 * r, 0.11 * r, seed + 12, a * 0.5);
+  } else if (inst === 'synth') {
+    fill(INK);
+    roughShape([[-0.98 * r, -0.2 * r], [0.98 * r, -0.42 * r], [0.98 * r, 0.42 * r], [-0.98 * r, 0.42 * r]], seed, a);
+    fill(BLUE);
+    for (let i = 0; i < 6; i++) roughEllipse((-0.8 + i * 0.2) * r, (-0.1 - i * 0.022) * r, 0.065 * r, 0.065 * r, seed + 30 + i, a * 0.4);
+    for (let i = 0; i < 3; i++) roughRect((0.45 + i * 0.16) * r, (-0.3 + i * 0.01) * r, 0.05 * r, 0.24 * r, seed + 40 + i, a * 0.4);
+    keys(-0.9 * r, 0.06 * r, 1.8 * r, 0.3 * r, 17, seed + 60, a);
+  } else if (inst === 'bass') {
+    push();
+    rotate(-0.62);
+    fill(INK);
+    roughRect(-0.2 * r, -0.055 * r, 1.08 * r, 0.11 * r, seed + 1, a * 0.6);
+    roughShape([[0.86 * r, -0.1 * r], [1.1 * r, -0.13 * r], [1.1 * r, 0.12 * r], [0.86 * r, 0.1 * r]], seed + 2, a * 0.6);
+    roughEllipse(-0.6 * r, 0.06 * r, 0.36 * r, 0.3 * r, seed + 3, a);
+    roughEllipse(-0.26 * r, -0.02 * r, 0.25 * r, 0.21 * r, seed + 4, a);
+    fill(BLUE);
+    roughRect(-0.62 * r, -0.13 * r, 0.07 * r, 0.26 * r, seed + 5, a * 0.4);
+    roughRect(-0.42 * r, -0.12 * r, 0.06 * r, 0.24 * r, seed + 6, a * 0.4);
+    stroke(BLUE); strokeWeight(Math.max(0.7, r * 0.012));
+    for (let k = -1.5; k <= 1.5; k++) line(-0.78 * r, k * 0.022 * r, 1.0 * r, k * 0.022 * r);
+    noStroke();
+    pop();
+  }
+}
+
+// ---------- the ten motifs (cover vocabulary), in blue on a card ----------
+function motif(k, x, y, r, seed) {
+  const a = Math.max(0.6, r * 0.04);
+  noStroke(); fill(BLUE);
+  switch (k % 10) {
+    case 0: // an eye with lashes
+      roughEllipse(x, y + r * 0.1, r * 0.62, r * 0.5, seed, a);
+      fill(PAPER); roughEllipse(x, y + r * 0.1, r * 0.3, r * 0.26, seed + 1, a * 0.6);
+      fill(BLUE); roughEllipse(x, y + r * 0.16, r * 0.12, r * 0.12, seed + 2, a * 0.4);
+      for (let i = -1; i <= 1; i++) roughRect(x + i * r * 0.3 - r * 0.05, y - r * 0.72, r * 0.1, r * 0.26, seed + 3 + i, a * 0.5);
+      break;
+    case 1: // a half-moon
+      roughEllipse(x - r * 0.25, y, r * 0.75, r * 0.75, seed, a, -HALF_PI, HALF_PI);
+      break;
+    case 2: // a star
+      star(x, y, r * 0.85, seed);
+      break;
+    case 3: // a tree
+      roughRect(x - r * 0.08, y - r * 0.2, r * 0.16, r * 0.9, seed, a * 0.6);
+      roughShape([[x - r * 0.7, y - r * 0.8], [x - r * 0.52, y - r * 0.85], [x, y - r * 0.1], [x + r * 0.52, y - r * 0.85], [x + r * 0.7, y - r * 0.8], [x + r * 0.1, y + r * 0.1], [x - r * 0.1, y + r * 0.1]], seed + 1, a * 0.6);
+      break;
+    case 4: // a sun
+      roughEllipse(x, y, r * 0.42, r * 0.42, seed, a);
+      for (let i = 0; i < 9; i++) {
+        const t = i / 9 * TWO_PI, c = Math.cos(t), s = Math.sin(t);
+        roughShape([[x + c * r * 0.55 - s * r * 0.08, y + s * r * 0.55 + c * r * 0.08], [x + c * r * 0.95, y + s * r * 0.95], [x + c * r * 0.55 + s * r * 0.08, y + s * r * 0.55 - c * r * 0.08]], seed + 2 + i, a * 0.3);
+      }
+      break;
+    case 5: // waves
+      for (let j = 0; j < 3; j++) {
+        const pts = [];
+        for (let i = 0; i <= 12; i++) pts.push([x - r * 0.85 + i * r * 0.142, y + (j - 1) * r * 0.48 + Math.sin(i * 1.1 + j) * r * 0.1]);
+        for (let i = 12; i >= 0; i--) pts.push([x - r * 0.85 + i * r * 0.142, y + (j - 1) * r * 0.48 + Math.sin(i * 1.1 + j) * r * 0.1 + r * 0.18]);
+        roughShape(pts, seed + j * 9, a * 0.4);
+      }
+      break;
+    case 6: // two hills
+      roughShape([[x - r * 0.95, y + r * 0.6], [x - r * 0.35, y - r * 0.55], [x + r * 0.2, y + r * 0.6]], seed, a);
+      roughShape([[x - r * 0.1, y + r * 0.6], [x + r * 0.45, y - r * 0.2], [x + r * 0.95, y + r * 0.6]], seed + 1, a);
+      break;
+    case 7: // three dots
+      roughEllipse(x - r * 0.55, y + r * 0.2, r * 0.26, r * 0.26, seed, a);
+      roughEllipse(x + r * 0.05, y - r * 0.3, r * 0.3, r * 0.3, seed + 1, a);
+      roughEllipse(x + r * 0.55, y + r * 0.35, r * 0.2, r * 0.2, seed + 2, a);
+      break;
+    case 8: // a crescent
+      roughEllipse(x, y, r * 0.75, r * 0.75, seed, a);
+      fill(PAPER); roughEllipse(x + r * 0.32, y - r * 0.18, r * 0.6, r * 0.6, seed + 1, a);
+      break;
+    case 9: // a fish
+      roughEllipse(x - r * 0.12, y, r * 0.6, r * 0.34, seed, a);
+      roughShape([[x + r * 0.4, y], [x + r * 0.92, y - r * 0.38], [x + r * 0.86, y + r * 0.38]], seed + 1, a * 0.6);
+      fill(PAPER); roughEllipse(x - r * 0.45, y - r * 0.06, r * 0.07, r * 0.07, seed + 2, a * 0.3);
+      break;
+  }
+}
+
+// ---------- the table's state ----------
+const occupied = () => spots.filter((s) => s.track);
+const cardById = (id) => cards.find((c) => c.id === id);
+const partsOf = (id) => eng.byId[id].parts || [];
+const stemsOf = (id) => Object.keys(eng.part(id, 0) || {});
+function groupTracks() {
+  const out = [];
+  for (const s of spots) if (s.track && !out.includes(s.track)) out.push(s.track);
+  return out;
+}
+const instsOn = (id) => spots.filter((s) => s.track === id).map((s) => s.inst);
+const accepts = (s, track) => !!(eng && stemsOf(track).includes(s.inst));
+function pieceFor(s) {
+  const pt = eng.part(s.track, s.part);
+  const p = pt ? pt[s.inst] : null;
+  const n = s.inst === 'synth' ? synthShift() : 0;
+  return p && n ? { ...p, semitones: n } : p;
+}
+// The key switch: the synth (only it) moved to the piano's key, in semitones
+function synthShift() {
+  const piano = spots[0].track, synth = spots[2].track;
+  if (!keyOn || !piano || !synth || piano === synth) return 0;
+  return eng.keyShift(eng.byId[synth].key, eng.byId[piano].key);
+}
+const plays = (id, k, inst) => !!partsOf(id)[k]?.playing.includes(inst);
+
+// The parts a track row offers. The track on every instrument it has: all
+// its parts. On some instruments only: the parts where they all really play
+// (else where any of them does)
+function offered(id, insts = instsOn(id)) {
+  const parts = partsOf(id);
+  const idx = parts.map((_, k) => k);
+  if (stemsOf(id).every((i) => insts.includes(i))) return idx;
+  const all = idx.filter((k) => insts.every((i) => plays(id, k, i)));
+  if (all.length) return all;
+  const any = idx.filter((k) => insts.some((i) => plays(id, k, i)));
+  return any.length ? any : idx;
+}
+// Which part a group plays: the current one if still offered, else the
+// first offered `all` part, else the first offered
+function groupPart(id, insts = instsOn(id), current = null) {
+  const ok = offered(id, insts);
+  if (current != null && ok.includes(current)) return current;
+  return ok.find((k) => partsOf(id)[k].all) ?? ok[0] ?? 0;
+}
+// Double-click: the first `all` part, else the fullest
+function defaultPart(id) {
+  const parts = partsOf(id);
+  const all = parts.findIndex((p) => p.all);
+  if (all >= 0) return all;
+  let best = 0;
+  parts.forEach((p, i) => { if (p.playing.length > parts[best].playing.length) best = i; });
+  return best;
+}
+const setPart = (id, k) => spots.forEach((s) => { if (s.track === id) s.part = k; });
+
+// Start these spots together (same sample: next bar, or now); their old
+// voices and `extra` stop at that moment. A newer operation on a spot wins
+// `now`: the whole table right away (a fresh clock, the old voices fade in
+// 30 ms); else on the next bar of the running clock
+async function launch(list, extra = [], now = false) {
+  const id = ++opSeq;
+  // the drums first: with the tempo switch on, the first piece leads
+  list = list.filter((s) => s.track).sort((a, b) => (b.inst === 'drums') - (a.inst === 'drums'));
+  list.forEach((s) => { s.pending = id; });
+  const owners = [], pieces = [];
+  for (const s of list) { const p = pieceFor(s); if (p) { owners.push(s); pieces.push(p); } }
+  const olds = [...list.map((s) => s.voice), ...extra].filter(Boolean);
+  list.forEach((s) => { s.voice = null; });
+  let vs;
+  try { vs = await eng.playTogether(pieces, { immediate: now }, olds); } catch (e) { console.error(e); return; }
+  owners.forEach((s, i) => {
+    const v = vs[i];
+    if (s.pending !== id || !running || !s.track || pieceFor(s)?.file !== v.piece.file) { v.stop(0); return; }
+    if (s.voice) s.voice.stop(0.1);
+    s.voice = v; s.pending = 0;
+    v.setGain(gainOf(s), 0.02);
+  });
+}
+// The spot's gain: its slider, or nothing when muted
+const gainOf = (s) => (s.muted ? 0 : s.vol);
+function startTable(extra = []) {
+  if (!occupied().length) return;
+  running = true;
+  // the whole table again, right away: a fresh clock (the drums' when the
+  // switch is on), every instrument aligned
+  return launch(occupied(), extra, true);
+}
+const drumsOn = (id) => spots[1].track === id;
+function stopTable() {
+  running = false;
+  opSeq++;
+  spots.forEach((s) => { if (s.voice) s.voice.stop(0.3); s.voice = null; s.pending = 0; });
+}
+function relaunchGroup(id, extra = []) {
+  if (!running) return startTable(extra);
+  // the drums change while they lead: the whole table follows them
+  if (tempoOn && drumsOn(id)) return startTable(extra);
+  return launch(spots.filter((s) => s.track === id), extra);
+}
+// A track lost or gained an instrument: keep its part only if it is still
+// one where its instruments really play
+function refit(id) {
+  if (!id || !spots.some((s) => s.track === id)) return;
+  const cur = spots.find((s) => s.track === id).part;
+  const k = groupPart(id, instsOn(id), cur);
+  if (k !== cur) { setPart(id, k); if (running) relaunchGroup(id); }
+}
+function drop(s, id) {
+  if (s.track === id) return;
+  const before = s.track;
+  const old = s.voice;
+  s.voice = null;
+  const mate = spots.find((x) => x !== s && x.track === id);
+  s.track = id; s.muted = false;
+  setPart(id, groupPart(id, instsOn(id), mate ? mate.part : null));
+  if (running && keyOn && (s.inst === 'piano' || s.inst === 'synth')) startTable([old]);
+  else relaunchGroup(id, [old]);
+  refit(before);
+  layout();
+}
+function silence(s) {
+  const leader = tempoOn && s.inst === 'drums' && running;
+  const before = s.track;
+  if (s.voice) s.voice.stop(0.4);
+  s.voice = null; s.track = null; s.muted = false; s.pending = 0;
+  if (!occupied().length) running = false;
+  else if (leader) startTable(); // a new leader
+  else if (keyOn && running && (s.inst === 'piano' || s.inst === 'synth')) startTable(); // the synth's key
+  refit(before);
+  layout();
+}
+// The key switch: free, or the synth moved to the piano's key
+function toggleKey() {
+  keyOn = !keyOn;
+  if (running) startTable();
+  say(keyOn ? 'Le synthé suit la tonalité du piano' : 'Tonalité libre');
+}
+// The tempo switch: free, or every instrument on the drums' tempo
+function toggleTempo() {
+  tempoOn = !tempoOn;
+  eng.tempoMatch = tempoOn;
+  if (running) startTable();
+  say(tempoOn ? 'Tempo calé sur la batterie' : 'Tempo libre : chacun à sa vitesse');
+}
+// A part chip: right away, the whole table restarts (this track on its new
+// part, the others on theirs), all aligned
+function choosePart(id, k) {
+  setPart(id, k);
+  startTable();
+  layout();
+}
+function toggle(s) {
+  s.muted = !s.muted;
+  s.shake = 0.6;
+  if (s.voice) s.voice.setGain(gainOf(s), 0.08);
+  say(s.muted ? `${NAMES[s.inst]} coupé — touchez-le pour le remettre` : `${NAMES[s.inst]} remis`);
+}
+// Double-click: the whole track on the table, on a RANDOM part (owner,
+// 2026-11-22), another one than the part it's on, when it has several
+function wholeTrack(id) {
+  const n = eng.byId[id].parts.length;
+  const now = spots.find((s) => s.track === id)?.part;
+  let k = Math.floor(Math.random() * n);
+  if (n > 1 && k === now) k = (k + 1 + Math.floor(Math.random() * (n - 1))) % n;
+  const extra = [];
+  spots.forEach((s) => {
+    if (accepts(s, id)) {
+      if (s.track !== id && s.voice) { extra.push(s.voice); s.voice = null; }
+      s.track = id; s.part = k; s.muted = false;
+    } else {
+      if (s.voice) extra.push(s.voice);
+      s.voice = null; s.track = null; s.muted = false;
+    }
+  });
+  running = true;
+  launch(occupied(), extra, true);
+  layout();
+  say(`${eng.byId[id].title}, partie ${k + 1} : le morceau tel qu'on le joue`);
+}
+// The die: a random track on each instrument, and for each track a part
+// where all the instruments taken from it really play (else roll again)
+function rollTable() {
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  for (let tries = 0; tries < 200; tries++) {
+    const choice = {};
+    spots.forEach((s) => {
+      const ok = eng.tracks.filter((t) => accepts(s, t.id));
+      choice[s.inst] = ok.length && Math.random() >= 0.08 ? pick(ok).id : null;
+    });
+    if (!Object.values(choice).some(Boolean)) continue;
+    const parts = {};
+    let fine = true;
+    for (const id of new Set(Object.values(choice).filter(Boolean))) {
+      const insts = INSTS.filter((i) => choice[i] === id);
+      const ks = partsOf(id).map((_, k) => k).filter((k) => insts.every((i) => plays(id, k, i)));
+      if (!ks.length) { fine = false; break; }
+      parts[id] = pick(ks);
+    }
+    if (fine) return { choice, parts };
+  }
+  return null;
+}
+function randomTable() {
+  const r = rollTable();
+  if (!r) return;
+  const extra = [];
+  spots.forEach((s) => {
+    if (s.voice) extra.push(s.voice);
+    s.voice = null;
+    s.track = r.choice[s.inst]; s.muted = false;
+    s.part = s.track ? r.parts[s.track] : 0;
+  });
+  running = true;
+  launch(occupied(), extra, true);
+  layout();
+  say('Au hasard : ' + occupied().map((s) => `${eng.byId[s.track].title} (${NAMES[s.inst].toLowerCase()})`).join(' · '), 3500);
+}
+function mainButton() {
+  if (!eng) return;
+  eng.unlock();
+  if (!started) { started = true; hint = HINT1; }
+  if (!occupied().length) return wholeTrack(DEFAULT_TRACK);
+  if (running) { stopTable(); say('Silence — la table reste prête'); } else { startTable(); say('Ça repart, tous ensemble'); }
+}
+function say(t, ms = 2200) { tempHint = t; hintUntil = millis() + ms; }
+
+// ---------- layout ----------
+// Desktop: buttons at the top, 4 instruments in a row, the strip, 2×5 cards.
+// Phone portrait: 2×2 instruments, 2×5 compact cards, the buttons at the
+// bottom (thumb). Phone landscape: one row of cards, the strip in 2 columns
+const MIN_TOUCH = 44;
+let L = { portrait: false, stripCols: 1, stripX0: 0, stripX1: 0, lines: [], labelW: 0, hintLines: 1, cardRows: 2 };
+function rowSpec(id, colW) {
+  const n = offered(id).length;
+  const avail = colW - L.labelW - 4;
+  const stagger = n * (MIN_TOUCH + 2) > avail;
+  return { id, stagger, h: stagger ? 96 : 52 };
+}
+function layout() {
+  const W = width, H = height;
+  pad = Math.max(8, Math.min(W, H) * 0.022);
+  const portrait = H > W && W < 700;
+  const shortH = H < 520;
+  const wideSpots = W >= 640 && W / H >= 1.05;
+  L.portrait = portrait;
+  const top = portrait ? 42 : 66;
+  const bottomBar = portrait ? 100 : 0;
+  const g = Math.max(6, W * 0.012);
+  // cards
+  L.cardRows = shortH && !portrait ? 1 : 2;
+  const perRow = 10 / L.cardRows;
+  const cardW = (W - 2 * pad - (perRow - 1) * g) / perRow;
+  let cardH;
+  if (L.cardRows === 1) cardH = Math.max(MIN_TOUCH + 6, Math.min(cardW * 0.82, 66));
+  else if (portrait) cardH = Math.max(MIN_TOUCH + 6, Math.min(cardW * 1.15, 84));
+  else cardH = Math.min(cardW * 1.3, (H * 0.36 - g) / 2);
+  const deckH = L.cardRows * cardH + (L.cardRows - 1) * g;
+  // strip
+  L.stripCols = eng && W >= 760 && H < 560 && groupTracks().length > 1 ? 2 : 1;
+  L.labelW = W < 640 ? 34 : 132;
+  const colW = (W - 2 * pad - (L.stripCols - 1) * 16) / L.stripCols;
+  const specs = eng ? groupTracks().map((id) => rowSpec(id, colW)) : [];
+  L.lines = [];
+  for (let i = 0; i < specs.length; i += L.stripCols) {
+    const line = specs.slice(i, i + L.stripCols);
+    L.lines.push({ rows: line, h: Math.max(...line.map((r) => r.h)) });
+  }
+  const stripH = L.lines.length ? L.lines.reduce((a, l) => a + l.h, 0) : 40;
+  L.colW = colW;
+  // hint: one or two lines, never under 12 px
+  textSize(12); textStyle(BOLD);
+  L.hintLines = textWidth(HINT1.toUpperCase()) > W - 24 ? 2 : 1;
+  const hintH = L.hintLines === 2 ? 36 : 24;
+  const spotsH = Math.max(90, H - top - bottomBar - deckH - pad - stripH - hintH - 10);
+  const cols = wideSpots ? 4 : 2, rws = wideSpots ? 1 : 2;
+  const cw = (W - 2 * pad) / cols, chh = spotsH / rws;
+  spots.forEach((s, i) => {
+    const c = i % cols, r = Math.floor(i / cols);
+    s.w = cw * 0.92; s.h = chh * 0.94;
+    s.cx = pad + cw * (c + 0.5);
+    s.cy = top + chh * (r + 0.5);
+  });
+  stripY = top + spotsH + 4;
+  hintY = stripY + stripH + hintH / 2;
+  const by = portrait ? H - bottomBar / 2 : 34;
+  const sw = portrait ? { x: pad, w: W / 2 + 10 - (portrait ? 28 : 24) - 14 - pad } : null;
+  buttons.play = { x: portrait ? W / 2 + 10 : W / 2, y: by, r: portrait ? 28 : 24 };
+  buttons.dice = { x: buttons.play.x + (portrait ? 66 : 76), y: by, r: portrait ? 22 : 19 };
+  // the switch: left of play (its label beside it)
+  // the two switches: stacked left of play on a phone; else tempo left of
+  // play, key right of the die
+  if (portrait) {
+    buttons.tempo = { x: pad, y: by - 44, w: sw.w, h: 44, pill: 'left' };
+    buttons.key = { x: pad, y: by, w: sw.w, h: 44, pill: 'left' };
+  } else {
+    buttons.tempo = { x: buttons.play.x - 300, y: by - 22, w: 250, h: 44, pill: 'right' };
+    const kx = buttons.dice.x + 100;
+    buttons.key = { x: kx, y: by - 22, w: Math.min(300, W - pad - kx), h: 44, pill: 'left' };
+  }
+  const y0 = hintY + hintH / 2 + 2;
+  cards.forEach((c, i) => {
+    c.w = cardW; c.h = cardH;
+    c.x = pad + (i % perRow) * (cardW + g);
+    c.y = y0 + Math.floor(i / perRow) * (cardH + g);
+  });
+}
+
+// ---------- p5 ----------
+function setup() {
+  pixelDensity(Math.min(2, displayDensity()));
+  const c = createCanvas(windowWidth, windowHeight);
+  c.elt.addEventListener('pointerdown', down);
+  c.elt.addEventListener('pointermove', move);
+  c.elt.addEventListener('pointerup', up);
+  c.elt.addEventListener('pointercancel', up);
+  c.elt.addEventListener('contextmenu', (e) => e.preventDefault());
+  // Space: play / stop (no page scroll, no auto-repeat)
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' && e.key !== ' ') return;
+    e.preventDefault();
+    if (!e.repeat) mainButton();
+  });
+  noiseSeed(7);
+  textFont(FONT);
+  Pinkasol.engine({ manifest: PINKASOL_MANIFEST, base: "https://media.tilefolio.com/i1/" }).then((e) => {
+    eng = window.eng = e;
+    eng.tempoMatch = tempoOn;
+    cards = e.tracks.map((t, i) => ({ id: t.id, title: t.title.toUpperCase(), i, x: 0, y: 0, w: 0, h: 0, shake: 0 }));
+    window.cards = cards;
+    layout();
+  }).catch((err) => { loadError = String(err); console.error(err); });
+  window.spots = spots;
+  window.table = { get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
+  layout();
+}
+function windowResized() { resizeCanvas(windowWidth, windowHeight); layout(); }
+
+function draw() {
+  background(BLUE);
+  noStroke();
+  spots.forEach(drawSpot);
+  drawStrip();
+  drawButtons();
+  drawHint();
+
+  if (!eng) {
+    fill(PAPER); textSize(14); textAlign(CENTER, CENTER);
+    text(loadError ? 'ERREUR : ' + loadError : 'CHARGEMENT…', width / 2, height * 0.75);
+    return;
+  }
+  for (const c of cards) {
+    if (drag && drag.card === c && !drag.from && drag.moved) {
+      fill(255, 255, 255, 40); roughRect(c.x, c.y, c.w, c.h, c.i * 13 + 1, 1.5);
+      continue;
+    }
+    if (anims.some((a) => a.card === c)) continue;
+    const hov = !drag && hovering(c);
+    c.shake *= 0.9;
+    const rot = Math.sin(frameCount * 0.6) * c.shake * 0.08 + (hov ? -0.02 : 0);
+    drawCard(c, c.x, c.y - (hov ? 3 : 0), c.w, c.h, rot);
+  }
+  for (let i = anims.length - 1; i >= 0; i--) {
+    const a = anims[i];
+    a.t = Math.min(1, a.t + 0.12);
+    const e = 1 - Math.pow(1 - a.t, 3);
+    drawCard(a.card, lerp(a.x, a.card.x, e), lerp(a.y, a.card.y, e), a.card.w, a.card.h, (1 - e) * 0.15);
+    if (a.t >= 1) anims.splice(i, 1);
+  }
+  if (drag && drag.moved) {
+    const c = drag.card;
+    drawCard(c, drag.x - drag.offx, drag.y - drag.offy, c.w, c.h, -0.06, true);
+  }
+}
+
+function drawHint() {
+  fill(PAPER); textAlign(CENTER, CENTER); textStyle(BOLD);
+  const h = (millis() < hintUntil ? tempHint : hint).toUpperCase();
+  let hs = Math.min(15, Math.max(12, width * 0.026));
+  textSize(hs);
+  while (textWidth(h) > width - 24 && hs > 12) { hs -= 0.5; textSize(hs); }
+  if (textWidth(h) <= width - 24) return text(h, width / 2, hintY);
+  // two lines, cut at the separator nearest the middle (else a space)
+  const seps = [...h.matchAll(/ · | : | /g)].map((m) => m.index);
+  const mid = h.length / 2;
+  const at = seps.sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))[0] ?? Math.floor(mid);
+  const a = h.slice(0, at).trim(), b = h.slice(at).replace(/^ ?[·:] ?/, '').trim();
+  text(a, width / 2, hintY - hs * 0.62);
+  text(b, width / 2, hintY + hs * 0.62);
+}
+
+function hovering(c) {
+  return mouseX >= c.x && mouseX <= c.x + c.w && mouseY >= c.y && mouseY <= c.y + c.h;
+}
+
+function drawButtons() {
+  const ph = eng && eng.phase();
+  const beat = running && ph ? Math.pow(1 - ph.beat, 3) : 0;
+  const b = buttons.play;
+  const hot = !drag && dist(mouseX, mouseY, b.x, b.y) < b.r + 4;
+  const R = b.r * (1 + beat * 0.06) + (hot ? 2 : 0);
+  fill(PAPER);
+  roughEllipse(b.x, b.y, R, R, 900, 1.4);
+  fill(BLUE);
+  if (running) roughRect(b.x - b.r * 0.36, b.y - b.r * 0.36, b.r * 0.72, b.r * 0.72, 910, 1);
+  else roughShape([[b.x - b.r * 0.28, b.y - b.r * 0.42], [b.x + b.r * 0.46, b.y], [b.x - b.r * 0.28, b.y + b.r * 0.42]], 920, 1);
+  fill(ORANGE);
+  star(b.x + b.r + 4, b.y - b.r + 2, 8 * (1 + beat * 0.5), 91);
+  drawTempoSwitch();
+  // "Au hasard": the Pinkasol logo, the cover's tree-face with its eyes and
+  // orange star, cut out of the cover (img/cover-medium.webp: in the tile,
+  // the cover from the site's own media library). Pops and turns when pressed
+  const d = buttons.dice;
+  const dhot = !drag && dist(mouseX, mouseY, d.x, d.y) < d.r + 4;
+  const since = (millis() - hatPop) / 1000;
+  const lift = since < 0.45 ? Math.sin(Math.PI * since / 0.45) : 0;
+  const S = d.r * 2.3 * (1 + lift * 0.18 + (dhot ? 0.05 : 0));
+  push();
+  translate(d.x, d.y);
+  rotate(-0.08 + lift * 0.5 + (dhot ? 0.05 : 0));
+  const pts = [];
+  for (let i = 0; i < 16; i++) { // a hand-cut square
+    const side = Math.floor(i / 4), f = (i % 4) / 4;
+    const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]][side], n2 = [[1, -1], [1, 1], [-1, 1], [-1, -1]][side];
+    const j = (noise(960 + i, 1.7) - 0.5) * S * 0.06;
+    pts.push([(c[0] + (n2[0] - c[0]) * f) * S / 2 + j, (c[1] + (n2[1] - c[1]) * f) * S / 2 - j]);
+  }
+  fill(PAPER);
+  beginShape(); pts.forEach(([x, y]) => vertex(x, y)); endShape(CLOSE);
+  if (COVER.complete && COVER.naturalWidth) {
+    const ctx2 = drawingContext;
+    ctx2.save();
+    ctx2.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx2.lineTo(x * 0.9, y * 0.9) : ctx2.moveTo(x * 0.9, y * 0.9)));
+    ctx2.closePath();
+    ctx2.clip();
+    // the face: the star and the two eyes (above the PICASOL letters)
+    const w = COVER.naturalWidth, h = COVER.naturalHeight;
+    ctx2.drawImage(COVER, w * 0.22, h * 0.03, w * 0.5, h * 0.48, -S * 0.45, -S * 0.45, S * 0.9, S * 0.9);
+    ctx2.restore();
+  }
+  pop();
+  fill(PAPER); textSize(12); textAlign(LEFT, CENTER); textStyle(BOLD);
+  if (d.x + d.r * 1.2 + 8 + textWidth('AU HASARD') < width - 6) text('AU HASARD', d.x + d.r * 1.2 + 8, d.y);
+}
+
+function drawTempoSwitch() {
+  drawSwitch(buttons.tempo, tempoOn, 950, 'TEMPO :', 'CALÉ SUR LA BATTERIE', 'CALÉ BATTERIE');
+  drawSwitch(buttons.key, keyOn, 970, 'TONALITÉ :', 'SYNTHÉ ACCORDÉ AU PIANO', 'SYNTHÉ → PIANO');
+}
+function drawSwitch(t, on, seed, l1, onLong, onShort) {
+  const pw = 44, ph = 24;
+  const px = t.pill === 'left' ? t.x : t.x + t.w - pw;
+  const py = t.y + (t.h - ph) / 2;
+  fill(on ? ORANGE : FADED);
+  roughRect(px, py, pw, ph, seed, 1);
+  fill(PAPER);
+  roughEllipse(on ? px + pw - 12 : px + 12, py + ph / 2, 9, 9, seed + 10, 0.6);
+  fill(PAPER); textStyle(BOLD); textSize(12);
+  const l2 = on ? onLong : 'LIBRE';
+  if (t.pill === 'left') {
+    textAlign(LEFT, CENTER);
+    const x = px + pw + 8, room = t.x + t.w - x;
+    if (textWidth(l1 + ' ' + l2) <= room) text(l1 + ' ' + l2, x, t.y + t.h / 2);
+    else { text(l1, x, t.y + t.h / 2 - 8); text(on ? onShort : l2, x, t.y + t.h / 2 + 8); }
+  } else {
+    textAlign(RIGHT, CENTER);
+    text(l1 + ' ' + l2, px - 8, t.y + t.h / 2);
+  }
+}
+// The key note on the synth's tag: "−1 ½ TON", and the keys when they fit
+function keyNote(s) {
+  if (s.inst !== 'synth' || !keyOn) return '';
+  const n = synthShift();
+  if (!n) return '';
+  const sign = n > 0 ? '+' : '−';
+  return `${sign}${Math.abs(n)} ½ TON${Math.abs(n) > 1 ? 'S' : ''}`;
+}
+
+// The tempo note on a tag: "136 → 96" when stretched, "13/4" when it can't follow
+function tempoNote(s) {
+  if (!tempoOn || !s.voice || !s.voice.ready) return '';
+  const clock = eng.clock, tr = eng.byId[s.track];
+  if (!clock) return '';
+  if (tr.meter !== clock.beats) return `${tr.meter}/4 : SON TEMPO`;
+  if (s.voice.stretched && Math.abs(s.voice.stretched - 1) > 0.003) return `${Math.round(tr.tempo)} → ${Math.round(clock.tempo)}`;
+  return '';
+}
+
+// The cover's orange star, a few around each instrument (unit r: x, y,
+// size). Playing: they beat with the clock and swell with the sound; empty
+// or muted: faint
+const STAR_SPOTS = {
+  piano: [[-1.02, -0.72, 0.15], [0.98, -0.9, 0.1], [0.62, -1.08, 0.065]],
+  drums: [[-1.0, -0.98, 0.1], [1.04, -0.62, 0.14], [-0.2, -1.12, 0.07]],
+  synth: [[-0.98, -0.62, 0.12], [0.94, -0.82, 0.09], [0.1, -0.88, 0.06]],
+  bass: [[-0.92, -0.86, 0.14], [-0.52, 0.66, 0.08], [0.98, 0.5, 0.1]],
+};
+function instrumentStars(s, r, on, lv) {
+  const ph = on && eng && eng.phase ? eng.phase() : null;
+  const beat = ph ? Math.pow(1 - ph.beat, 3) * (ph.n === 0 ? 1 : 0.55) : 0;
+  (STAR_SPOTS[s.inst] || []).forEach(([x, y, k], j) => {
+    const R = r * k * (1 + (on ? 0.25 * beat + 0.35 * lv : 0));
+    drawingContext.globalAlpha = on ? 1 : 0.38;
+    fill(ORANGE);
+    push();
+    translate(x * r, y * r);
+    rotate((on ? beat * 0.25 : 0) * (j % 2 ? 1 : -1) + j * 0.4);
+    star(0, 0, R, 900 + s.i * 13 + j * 5);
+    pop();
+  });
+  drawingContext.globalAlpha = 1;
+}
+
+// ---------- volume sliders (one per instrument) ----------
+// A vertical groove at the spot's right edge, above the tag; orange up to
+// the paper knob; a tick at 1 (the default). Drag the knob, tap the groove
+// to jump, double-tap to reset
+function sliderOf(s, area = s.area) {
+  const x = s.cx + s.w / 2 - 16;
+  const y0 = s.cy - s.h / 2 + 12, y1 = s.cy - s.h / 2 + area - 4;
+  return { x, y0, y1, ky: y1 - (s.vol / VOL_MAX) * (y1 - y0) };
+}
+function drawSlider(s, area) {
+  s.area = area;
+  const g = sliderOf(s, area);
+  const live = !!s.track;
+  drawingContext.globalAlpha = live ? 1 : 0.45;
+  fill(s.muted ? FADED : PAPER);
+  roughRect(g.x - 4, g.y0, 8, g.y1 - g.y0, 970 + s.i * 7, 0.8);
+  if (!s.muted) { fill(ORANGE); roughRect(g.x - 3, g.ky, 6, g.y1 - g.ky, 980 + s.i * 7, 0.6); }
+  // the default: a little tick
+  const dy = g.y1 - (1 / VOL_MAX) * (g.y1 - g.y0);
+  fill(PAPER); rect(g.x - 9, dy - 1, 5, 2); rect(g.x + 4, dy - 1, 5, 2);
+  const hot = drag && drag.kind === 'slider' && drag.s === s;
+  fill(PAPER);
+  roughEllipse(g.x, g.ky, hot ? 11 : 9, hot ? 11 : 9, 990 + s.i * 7, 0.7);
+  fill(BLUE); rect(g.x - 4, g.ky - 1, 8, 2);
+  drawingContext.globalAlpha = 1;
+}
+function sliderAt(x, y) {
+  return spots.find((s) => {
+    if (!s.area) return false;
+    const g = sliderOf(s);
+    return Math.abs(x - g.x) <= MIN_TOUCH / 2 && y >= g.y0 - 12 && y <= g.y1 + 12;
+  }) || null;
+}
+function setVol(s, y) {
+  const g = sliderOf(s);
+  let v = ((g.y1 - y) / (g.y1 - g.y0)) * VOL_MAX;
+  v = Math.max(0, Math.min(VOL_MAX, v));
+  if (Math.abs(v - 1) < 0.04) v = 1; // a soft notch at the default
+  s.vol = v;
+  if (s.voice) s.voice.setGain(gainOf(s), 0.05);
+}
+
+function drawSpot(s) {
+  const tagH = Math.max(12, Math.min(17, s.w * 0.07)) * 1.9;
+  const area = s.h - tagH - 14; // above the tag (and its tempo note)
+  // the instrument (and its stars) left of the volume slider
+  const r = Math.min((s.w / 2 - 26) / 1.1, area * 0.62 * 0.8);
+  const on = !!(s.track && running);
+  const lv = on && s.voice && s.voice.ready ? s.voice.level() : 0;
+  s.pulse = lerp(s.pulse, lv, 0.35);
+  s.shake *= 0.88;
+  const hovered = drag && drag.moved && spotAt(drag.x, drag.y) === s;
+  const ok = hovered && accepts(s, drag.card.id);
+  const quiet = s.track && !plays(s.track, s.part, s.inst);
+  const cy = s.cy - s.h / 2 + area / 2 + 2;
+
+  if (hovered) {
+    fill(ok ? ORANGE : 'rgba(253,253,253,0.25)');
+    roughRect(s.cx - s.w / 2, s.cy - s.h / 2, s.w, s.h, 300 + s.i * 7, 2);
+    fill(BLUE);
+    roughRect(s.cx - s.w / 2 + 4, s.cy - s.h / 2 + 4, s.w - 8, s.h - 8, 310 + s.i * 7, 2);
+  }
+  if (s.track && s.muted) { // muted: a dashed frame
+    noFill(); stroke(FADED); strokeWeight(2);
+    drawingContext.setLineDash([7, 7]);
+    rect(s.cx - s.w / 2 + 3, s.cy - s.h / 2 + 3, s.w - 6, s.h - 6, 4);
+    drawingContext.setLineDash([]);
+    noStroke();
+  }
+  push();
+  translate(s.cx - 14 + Math.sin(frameCount * 0.7) * s.shake * 4, cy);
+  scale(1 + s.pulse * 0.08);
+  INK = !s.track || s.muted ? FADED : quiet ? DIM : PAPER;
+  drawInstrument(s.inst, r, 100 + s.i * 31);
+  INK = PAPER;
+  instrumentStars(s, r, on && !s.muted, lv);
+  pop();
+  drawSlider(s, area);
+
+  let ts = Math.max(12, Math.min(17, s.w * 0.07));
+  textAlign(CENTER, CENTER); textStyle(BOLD); textSize(ts);
+  const draggingFromHere = drag && drag.moved && drag.from === s;
+  if (s.track && !draggingFromHere) {
+    const c = cardById(s.track);
+    const label = s.muted ? `COUPÉ · ${c.title}` : `${c.title} · ${s.part + 1}`;
+    const th = ts * 1.9;
+    const tw = Math.min(s.w * 0.98, textWidth(label) + th * 1.6);
+    while (textWidth(label) + th * 1.2 > tw && ts > 12) { ts -= 0.5; textSize(ts); }
+    const x = s.cx - tw / 2, y = s.cy + s.h / 2 - th;
+    fill(s.muted || quiet ? FADED : PAPER); roughRect(x, y, tw, th, 500 + s.i * 11 + c.i, 1.5);
+    motif(c.i, x + th * 0.5, y + th / 2, th * 0.3, 700 + c.i * 17);
+    fill(BLUE);
+    text(label, s.cx + th * 0.3, y + th / 2 - 1);
+    if (s.pending) { fill(ORANGE); ellipse(x + tw - 6, y + 6, 6); }
+    const notes = [tempoNote(s), keyNote(s)].filter(Boolean);
+    if (notes.length) {
+      fill(ORANGE); textSize(12);
+      let note = notes.join(' · ');
+      const kn = keyNote(s);
+      if (kn) { // the keys too, when there is room
+        const keys = `${eng.byId[s.track].key} → ${eng.byId[spots[0].track].key}`.toUpperCase();
+        if (textWidth(note + ' · ' + keys) < s.w - 36) note += ' · ' + keys;
+      }
+      text(note, s.cx - 14, y - 9);
+    }
+  } else {
+    fill(PAPER);
+    drawingContext.globalAlpha = 0.85;
+    text(NAMES[s.inst], s.cx, s.cy + s.h / 2 - ts);
+    drawingContext.globalAlpha = 1;
+  }
+}
+
+// The parts of each track on the table, numbered in song order, where they
+// are in the song. Parts not offered: faint ticks
+function drawStrip() {
+  chips.length = 0;
+  if (!eng) return;
+  textStyle(BOLD);
+  if (!L.lines.length) {
+    fill(FADED); textAlign(CENTER, CENTER); textSize(12);
+    text('LES PARTIES DU MORCEAU APPARAÎTRONT ICI', width / 2, stripY + 20);
+    return;
+  }
+  let lineY = stripY;
+  L.lines.forEach((line) => {
+    line.rows.forEach((row, ci) => {
+      const colX = pad + ci * (L.colW + 16);
+      drawRow(row, colX, colX + L.colW, lineY, line.h);
+    });
+    lineY += line.h;
+  });
+}
+function drawRow(row, X0, X1, top, h) {
+  const id = row.id, parts = partsOf(id), c = cardById(id);
+  const cur = spots.find((s) => s.track === id).part;
+  const ok = offered(id);
+  const ly = top + h / 2 + (row.stagger ? 0 : 8); // the song's line
+  // label: motif (and title when there is room)
+  const narrow = L.labelW < 60;
+  const my = row.stagger ? ly : ly - 8;
+  fill(PAPER); roughEllipse(X0 + 13, my, 13, 13, 600 + c.i, 0.8);
+  motif(c.i, X0 + 13, my, 8, 700 + c.i * 17);
+  if (!narrow) {
+    fill(PAPER); textAlign(LEFT, CENTER); let ls = 14; textSize(ls);
+    while (textWidth(c.title) > L.labelW - 34 && ls > 12) textSize(--ls);
+    text(c.title, X0 + 30, my);
+  }
+  const x0 = X0 + L.labelW, x1 = X1;
+  const dur = Math.max(...parts.map((p) => p.end)) * 1.03;
+  const sx = (tm) => x0 + (tm / dur) * (x1 - x0);
+  fill(FADED); rect(x0, ly - 1, x1 - x0, 2);
+  // not offered: a faint tick
+  parts.forEach((p, k) => {
+    if (ok.includes(k)) return;
+    fill(FADED); rect(sx(p.start), ly - 3, Math.max(2, sx(p.end) - sx(p.start)), 6);
+  });
+  // offered: chips, near their place, never closer than a finger
+  const cw = 40, pitch = MIN_TOUCH + 2;
+  const place = (ks) => {
+    const xs = ks.map((k) => Math.min(Math.max((sx(parts[k].start) + sx(parts[k].end)) / 2, x0 + cw / 2), x1 - cw / 2));
+    for (let i = 1; i < xs.length; i++) xs[i] = Math.max(xs[i], xs[i - 1] + pitch);
+    const n = xs.length;
+    if (n && xs[n - 1] > x1 - cw / 2) {
+      xs[n - 1] = x1 - cw / 2;
+      for (let i = n - 2; i >= 0; i--) xs[i] = Math.min(xs[i], xs[i + 1] - pitch);
+    }
+    return xs;
+  };
+  const lanes = row.stagger ? [ok.filter((_, i) => i % 2 === 0), ok.filter((_, i) => i % 2 === 1)] : [ok];
+  const voice = spots.find((s) => s.track === id && s.voice && s.voice.ready)?.voice;
+  lanes.forEach((ks, lane) => {
+    const xs = place(ks);
+    const up = !row.stagger || lane === 0;
+    const cy = up ? ly - 22 : ly + 22; // chip centre
+    ks.forEach((k, i) => {
+      const p = parts[k], isCur = k === cur;
+      const a = sx(p.start), b = Math.max(sx(p.end), a + 3);
+      fill(isCur ? ORANGE : PAPER); rect(a, ly - 3, b - a, 6);
+      stroke(isCur ? ORANGE : FADED); strokeWeight(1);
+      line(xs[i], up ? cy + 13 : cy - 13, (a + b) / 2, up ? ly - 3 : ly + 3);
+      noStroke();
+      fill(isCur ? ORANGE : PAPER);
+      roughRect(xs[i] - cw / 2, cy - 13, cw, 26, 800 + k * 5 + c.i, 1);
+      fill(BLUE); textAlign(CENTER, CENTER); textSize(14);
+      text(String(k + 1), xs[i] + (p.all ? 5 : 0), cy - 1);
+      if (p.all) { fill(isCur ? BLUE : ORANGE); star(xs[i] - cw / 2 + 9, cy - 1, 5.5, 60 + k); }
+      // the touch target: 44 × 44 around the chip, away from the line
+      chips.push({ id, k, x: xs[i] - MIN_TOUCH / 2, y: up ? cy + 13 - MIN_TOUCH : cy - 13, w: MIN_TOUCH, h: MIN_TOUCH });
+      if (isCur && voice && running) {
+        const pos = voice.position();
+        if (pos != null) {
+          const f = pos / (p.loop_end / voice.rate);
+          fill(PAPER); rect(a + (b - a) * f - 1, ly - 6, 3, 12);
+        }
+      }
+    });
+  });
+}
+
+function drawCard(c, x, y, w, h, rot, lifted) {
+  push();
+  translate(x + w / 2, y + h / 2);
+  rotate(rot || 0);
+  if (lifted) { fill(0, 0, 0, 50); roughRect(-w / 2 + 5, -h / 2 + 7, w, h, c.i * 13 + 2, 2); }
+  fill(PAPER);
+  roughRect(-w / 2, -h / 2, w, h, c.i * 13, Math.max(1.2, w * 0.022));
+  const flat = h < w * 0.95; // short cards: a smaller motif
+  motif(c.i, 0, -h * 0.12, Math.min(w, h) * (flat ? 0.22 : 0.27), 700 + c.i * 17);
+  fill(BLUE); textAlign(CENTER, CENTER); textStyle(BOLD);
+  let ts = Math.max(12, Math.min(h * 0.15, w * 0.2));
+  textSize(ts);
+  while (textWidth(c.title) > w * 0.92 && ts > 12) { ts -= 0.5; textSize(ts); }
+  if (textWidth(c.title) > w * 0.96) { ts = 11; textSize(ts); }
+  text(c.title, 0, h * 0.33);
+  const on = spots.filter((s) => s.track === c.id);
+  if (on.length) {
+    fill(ORANGE);
+    star(w / 2 - w * 0.13, -h / 2 + Math.min(w, h) * 0.14, Math.min(w, h) * 0.09, 40 + c.i);
+  }
+  pop();
+}
+
+// ---------- pointer (mouse and touch) ----------
+function pos(e) {
+  const r = e.target.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function cardAt(x, y) {
+  for (let i = cards.length - 1; i >= 0; i--) {
+    const c = cards[i];
+    if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) return c;
+  }
+  return null;
+}
+function spotAt(x, y) {
+  return spots.find((s) => Math.abs(x - s.cx) <= s.w / 2 && Math.abs(y - s.cy) <= s.h / 2) || null;
+}
+const chipAt = (x, y) => chips.find((c) => x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) || null;
+const onButton = (b, x, y) => dist(x, y, b.x, b.y) <= Math.max(b.r + 6, MIN_TOUCH / 2);
+
+function down(e) {
+  if (!eng) return;
+  const { x, y } = pos(e);
+  if (!started) { started = true; hint = HINT1; }
+  eng.unlock();
+  if (onButton(buttons.play, x, y)) { drag = { kind: 'play' }; return; }
+  if (onButton(buttons.dice, x, y)) { drag = { kind: 'dice' }; return; }
+  const tb = buttons.tempo, kb = buttons.key;
+  if (x >= tb.x && x <= tb.x + tb.w && y >= tb.y && y <= tb.y + tb.h) { drag = { kind: 'tempo' }; return; }
+  if (x >= kb.x && x <= kb.x + kb.w && y >= kb.y && y <= kb.y + kb.h) { drag = { kind: 'key' }; return; }
+  const sl = sliderAt(x, y);
+  if (sl) {
+    const now = millis();
+    if (lastSliderTap.s === sl && now - lastSliderTap.t < 380) {
+      lastSliderTap = { s: null, t: 0 };
+      sl.vol = 1;
+      if (sl.voice) sl.voice.setGain(gainOf(sl), 0.05);
+      say(`${NAMES[sl.inst]} : volume normal`);
+      return;
+    }
+    lastSliderTap = { s: sl, t: now };
+    drag = { kind: 'slider', s: sl };
+    setVol(sl, y);
+    e.target.setPointerCapture(e.pointerId);
+    return;
+  }
+  const ch = chipAt(x, y);
+  if (ch) { drag = { kind: 'chip', chip: ch }; return; }
+  const c = cardAt(x, y);
+  const s = !c && spotAt(x, y);
+  if (c) drag = { card: c, from: null, sx: x, sy: y, x, y, moved: false, offx: x - c.x, offy: y - c.y };
+  else if (s && s.track) {
+    const cc = cardById(s.track);
+    drag = { card: cc, from: s, sx: x, sy: y, x, y, moved: false, offx: cc.w / 2, offy: cc.h / 2 };
+  } else if (s) {
+    s.shake = 1;
+    say(`Glissez une carte sur ${ARTICLE[s.inst]}`);
+  }
+  if (drag) e.target.setPointerCapture(e.pointerId);
+}
+function move(e) {
+  if (drag && drag.kind === 'slider') return setVol(drag.s, pos(e).y);
+  if (!drag || !drag.card) return;
+  const { x, y } = pos(e);
+  drag.x = x; drag.y = y;
+  if (!drag.moved && Math.hypot(x - drag.sx, y - drag.sy) > 8) {
+    drag.moved = true;
+    const pt = eng.part(drag.card.id, defaultPart(drag.card.id));
+    if (pt) eng.preload(Object.values(pt));
+  }
+}
+function up(e) {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  if (d.kind === 'slider') return;
+  if (d.kind === 'play') return mainButton();
+  if (d.kind === 'dice') { hatPop = millis(); return randomTable(); }
+  if (d.kind === 'tempo') return toggleTempo();
+  if (d.kind === 'key') return toggleKey();
+  if (d.kind === 'chip') {
+    const { id, k } = d.chip;
+    say(`${eng.byId[id].title} : partie ${k + 1}`);
+    return choosePart(id, k);
+  }
+  const { x, y } = pos(e);
+  if (!d.moved) {
+    if (d.from) return toggle(d.from);
+    const now = millis();
+    if (lastTap.id === d.card.id && now - lastTap.t < 380) { lastTap = { id: null, t: 0 }; return wholeTrack(d.card.id); }
+    lastTap = { id: d.card.id, t: now };
+    d.card.shake = 1;
+    say('Glissez la carte sur un instrument · double-clic : tout le morceau');
+    return;
+  }
+  const target = spotAt(x, y);
+  if (target && target === d.from) return;
+  if (target && accepts(target, d.card.id)) {
+    if (d.from) silence(d.from);
+    drop(target, d.card.id);
+    return;
+  }
+  if (target) say(`${eng.byId[d.card.id].title} n'a pas de ${NAMES[target.inst].toLowerCase()}`);
+  if (d.from && !target) silence(d.from);
+  anims.push({ card: d.card, x: x - d.offx, y: y - d.offy, t: 0 });
+}
+</script>
+</body>
+</html>

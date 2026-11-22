@@ -30,6 +30,25 @@ content policy, so what runs here runs there.
 The audio isn't in this repository (see below): without it the page loads
 but stays silent.
 
+## The Tilefolio tile
+
+`dist/pinkasol-tile.html` is the tile, ready to paste: in edit mode on the
+site, **+ Code tile**, paste the file's content, tick **p5.js**, capture or
+upload a still, create. 77 KB of the 200 KB a code tile allows.
+
+    make tile         # rebuild it from duo.html, the engine and the manifest
+    make tile-local   # the same for this playground:
+                      # http://localhost:8121/dist/pinkasol-tile.local.html
+
+It plays in Tilefolio only once:
+1. the code tile is live (Tilefolio PR #796, `BOX_URL` set);
+2. the box lets a tile fetch its site's media (`connect-src` = the media
+   library, like `img-src`/`media-src` already): today it fetches nothing;
+3. the part files (`audio/pieces/`, 207 MP3, 62 MB) are in picasol.fr's media
+   library, and `audio/media-urls.json` maps each one to its address
+   (`{ "01_Rototo/p1-drums.mp3": "https://media.tilefolio.com/i1/…" }`); then
+   `make tile` again. Until then the build warns and the tile stays silent.
+
 ## Pages
 
     index.html        menu
@@ -52,10 +71,10 @@ are not published here. To rebuild locally:
     audio/stems/stems.json          key, bpm, meter, rubato opening (kept)
     img/cover-medium.webp           the album cover
 
-    python3 -m venv tools/.venv && tools/.venv/bin/pip install numpy librosa soundfile
-    tools/.venv/bin/python tools/analyse.py   # bars, parts -> audio/analysis.json
-    tools/.venv/bin/python tools/cut.py       # parts -> audio/pieces/ + manifest.json
-    tools/.venv/bin/python tools/edges.py     # report parts with quiet edges
+    make analyse   # bars, parts -> audio/analysis.json (creates tools/.venv)
+    make parts     # parts -> audio/pieces/ + manifest.json
+    make edges     # report parts with quiet edges
+    make audio     # all three, then the tile
 
 `audio/analysis.json` and `audio/pieces/manifest.json` are kept in the repo:
 they show the result of the analysis (bars, parts, which instruments play).
