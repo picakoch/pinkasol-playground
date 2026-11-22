@@ -12,3 +12,4 @@ __pycache__/
 .DS_Store
 dist/*.local.html
 node_modules/
+ops/
