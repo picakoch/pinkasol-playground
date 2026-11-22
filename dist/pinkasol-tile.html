@@ -10,6 +10,21 @@
   #back { position: absolute; top: 12px; left: 12px; z-index: 2; color: #fdfdfd; text-decoration: none;
     font: 800 15px/1 "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
   #back:hover { color: #dc8d4e; }
+  /* the "Garder" panel: a sheet of paper over the table */
+  #keep { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(23, 69, 150, .6); }
+  #keep[hidden] { display: none; }
+  #keep .paper { box-sizing: border-box; width: min(460px, calc(100vw - 20px)); max-height: calc(100vh - 20px); overflow: auto; background: #fdfdfd; color: #174596; padding: 18px 18px 16px;
+    clip-path: polygon(1% 2%, 30% 0, 62% 1.5%, 99% 0, 100% 35%, 98.5% 70%, 100% 99%, 64% 100%, 33% 98.5%, 0 100%, 1.5% 62%, 0 28%);
+    font: 700 15px/1.3 "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif; }
+  #keep h2 { margin: 0 0 8px; font-size: 20px; letter-spacing: .05em; }
+  #keep h2 span { color: #dc8d4e; }
+  #keep .mix { margin: 0 0 10px; font-weight: 600; }
+  #keep .code { margin: 0 0 10px; padding: 8px 10px; background: #e6edf9; font: 600 16px/1.35 ui-monospace, Menlo, Consolas, monospace; word-break: break-all;
+    user-select: all; -webkit-user-select: all; }
+  #keep .msg { margin: 0 0 10px; min-height: 1.3em; }
+  #keep .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  #keep button { min-height: 44px; padding: 0 16px; border: 0; background: #174596; color: #fdfdfd; font: inherit; letter-spacing: .04em; cursor: pointer; }
+  #keep button.light { background: #7f97c7; }
 </style>
 <script>
 // Pinkasol sound engine — shared by the three experiences (duo, ciel,
@@ -414,6 +429,15 @@ const PINKASOL_MANIFEST = {"palette":{"blue":"#174596","paper":"#fdfdfd","orange
 </head>
 <body>
 
+<div id="keep" hidden>
+  <div class="paper" role="dialog" aria-label="Votre combinaison">
+    <h2><span>♥</span> VOTRE COMBINAISON</h2>
+    <p class="mix" id="keep-mix"></p>
+    <p class="code" id="keep-code"></p>
+    <p class="msg" id="keep-msg"></p>
+    <div class="row"><button id="keep-share" type="button">PARTAGER PAR E-MAIL</button><button id="keep-close" class="light" type="button">FERMER</button></div>
+  </div>
+</div>
 <script>
 // La table du duo — the tracks are cards. Drop one on an instrument: that
 // instrument plays its stem of a PART of the track (a passage cut on bars,
@@ -699,6 +723,7 @@ const setPart = (id, k) => spots.forEach((s) => { if (s.track === id) s.part = k
 // 30 ms); else on the next bar of the running clock
 async function launch(list, extra = [], now = false) {
   const id = ++opSeq;
+  if (presetPending) { presetPending = false; hint = HINT1; }
   // the drums first: with the tempo switch on, the first piece leads
   list = list.filter((s) => s.track).sort((a, b) => (b.inst === 'drums') - (a.inst === 'drums'));
   list.forEach((s) => { s.pending = id; });
@@ -946,6 +971,7 @@ function layout() {
   const sw = portrait ? { x: pad, w: W / 2 + 10 - (portrait ? 28 : 24) - 14 - pad } : null;
   buttons.play = { x: portrait ? W / 2 + 10 : W / 2, y: by, r: portrait ? 28 : 24 };
   buttons.dice = { x: buttons.play.x + (portrait ? 66 : 76), y: by, r: portrait ? 22 : 19 };
+  buttons.keep = { x: buttons.play.x - 160, y: by - 22, w: 112, h: 44 }; // ♥ Garder, left of play
   // the switch: left of play (its label beside it)
   // the two switches: stacked left of play on a phone; else tempo left of
   // play, key right of the die
@@ -975,6 +1001,27 @@ const SHORT_HINT = 'Touchez une chanson · glissez-la sur un instrument';
 const isCompact = () => width < 600 || height < 520;
 let compactIssues = []; // texts that would not fit (tests)
 
+// The instruction, always there (people won't know what to do otherwise)
+const COMPACT_HINT = "Touchez une chanson pour l'écouter, glissez-la sur un instrument pour changer ce qu'il joue";
+// Fit a text in `w`: the largest size from `max` down to 9 px, on one line,
+// else two lines cut at the separator nearest the middle (never truncated)
+function fitLines(str, w, max = 12) {
+  textStyle(BOLD);
+  const s = str.toUpperCase();
+  const cuts = [...s.matchAll(/, | · | : | /g)].map((m) => [m.index, m[0].length]);
+  const mid = s.length / 2;
+  cuts.sort((a, b) => Math.abs(a[0] - mid) - Math.abs(b[0] - mid));
+  for (let size = max; size >= 9; size -= 0.5) {
+    textSize(size);
+    if (textWidth(s) <= w) return { size, lines: [s] };
+    for (const [i, n] of cuts.slice(0, 3)) {
+      const a = s.slice(0, i + (n === 2 ? 1 : 0)).trim(), b = s.slice(i + n).trim();
+      if (textWidth(a) <= w && textWidth(b) <= w) return { size, lines: [a, b] };
+    }
+  }
+  textSize(9);
+  return { size: 9, lines: [s] }; // reported by the tests if it ever happens
+}
 function layoutCompact() {
   const W = width, H = height;
   L.compact = true;
@@ -982,58 +1029,86 @@ function layoutCompact() {
   pad = 8;
   const back = document.getElementById('back');
   if (back) back.style.display = 'none';
-  // bottom bar: play/stop and the random face, >= 48 px
-  const bb = H < 420 ? 58 : 76;
-  const by = H - bb / 2;
-  buttons.play = { x: W / 2 - 42, y: by, r: 24 };
-  buttons.dice = { x: W / 2 + 34, y: by, r: 22 };
-  buttons.tempo = { x: -999, y: -999, w: 0, h: 0 };
-  buttons.key = { x: -999, y: -999, w: 0, h: 0 };
+  const short = H < 420;
+  // top: play/stop and the random face; bottom: ♥ Garder (all >= 44 px)
+  const tbH = short ? 46 : 64, bbH = short ? 46 : 60;
+  if (short) pad = 5;
   // tokens: one row of 10 when there is room, else two rows of 5
   const perRow = (W - 2 * pad) / 10 >= 56 ? 10 : 5;
   const rows = 10 / perRow;
   const slot = (W - 2 * pad) / perRow;
-  let d = Math.max(44, Math.min(slot - 8, 64, (H * (rows === 1 ? 0.17 : 0.13))));
-  // titles under the tokens: only if every title fits whole at >= 11 px,
-  // and the instruments keep at least 40 % of the height
+  // the disc: >= 44 px, or 36 on short screens (its touch target stays the
+  // whole cell, disc and name, >= 44 px)
+  const d = short ? Math.min(40, slot - 10) : Math.max(44, Math.min(slot - 10, 62, H * (rows === 1 ? 0.15 : 0.12)));
+  // names under the tokens, always: the largest size (13 to 8.5 px) where
+  // every name fits its slot; a name still too long goes on two lines
   textStyle(BOLD);
-  let ts = Math.min(13, Math.max(11, d * 0.24));
+  let ts = Math.min(13, Math.max(8.5, d * 0.24));
   textSize(ts);
-  while (ts > 11 && cards.some((c) => textWidth(c.title) > slot - 4)) { ts -= 0.5; textSize(ts); }
-  const titlesFit = cards.length && cards.every((c) => textWidth(c.title) <= slot - 4);
-  // the short hint: one line, or nothing
-  textSize(12);
-  const hintH = textWidth(SHORT_HINT.toUpperCase()) <= W - 2 * pad ? 20 : 0;
-  const tokensH = (titles) => rows * (d + (titles ? ts + 6 : 0)) + (rows - 1) * 6;
-  let titles = titlesFit && H - bb - tokensH(true) - hintH - 3 * pad >= H * 0.4;
-  L.tokTitles = titles; L.tokSize = ts; L.tokD = d;
-  const tokTop = H - bb - pad - tokensH(titles);
-  const cellH = d + (titles ? ts + 6 : 0);
-  cards.forEach((c, i) => {
-    c.w = slot; c.h = cellH;
-    c.x = pad + (i % perRow) * slot;
-    c.y = tokTop + Math.floor(i / perRow) * (cellH + 6);
+  const fits = (c) => textWidth(c.title) <= slot - 6;
+  while (ts > 8.5 && !cards.every(fits)) { ts -= 0.5; textSize(ts); }
+  let lines = 1;
+  cards.forEach((c) => {
+    c.lines = [c.title];
+    if (!fits(c) && c.title.includes(' ')) {
+      const words = c.title.split(' '), half = Math.ceil(words.length / 2);
+      c.lines = [words.slice(0, half).join(' '), words.slice(half).join(' ')];
+      lines = 2;
+    }
   });
-  hintY = tokTop - hintH / 2 - 2;
+  const titleH = lines * (ts + 2) + 4;
+  L.tokTitles = true; L.tokSize = ts; L.tokD = d; L.tokSlot = slot;
+  const tokensH = rows * (d + titleH) + (rows - 1) * 6;
+  // the instruction: one or two lines, >= 9 px
+  L.hintFit = fitLines(COMPACT_HINT, W - 2 * pad, short ? 11 : 12);
+  const hintH = L.hintFit.lines.length * (L.hintFit.size + 3) + (short ? 6 : 12);
   L.hintH = hintH;
-  // instruments: one row of four, as tall as their width allows, centred
-  // in what is left
-  const avail = tokTop - hintH - 4 - pad;
+  // the instruments: one row of four (drawing, song, ‹ ›); what is left
+  // short screens: the ‹ › go in the song's line (no row of their own)
+  L.inline = short;
+  L.arrowsH = short ? 0 : ARROWS_H;
+  const gap = short ? 2 : 10;
   const cw = (W - 2 * pad) / 4;
-  const ch = Math.min(avail, cw * 1.25 + 24);
-  // the whole composition centred: what the instruments don't use goes
-  // half above them, half under the buttons
-  const dy = (avail - ch) / 2;
-  const instTop = pad + dy;
+  const fixed = tbH + gap + hintH + tokensH + gap + bbH;
+  const ch = Math.max(60, Math.min(H - 2 * pad - fixed, cw * 1.25 + 24 + (short ? 16 : L.arrowsH)));
+  // the whole stack centred
+  let y = Math.max(pad, (H - fixed - ch) / 2);
+  buttons.play = { x: W / 2 - 36, y: y + tbH / 2, r: short ? 21 : 24 };
+  buttons.dice = { x: W / 2 + 36, y: y + tbH / 2, r: short ? 19 : 22 };
+  y += tbH;
   spots.forEach((s, i) => {
     s.w = cw - 6; s.h = ch - 6;
     s.cx = pad + cw * (i + 0.5);
-    s.cy = instTop + ch / 2;
+    s.cy = y + ch / 2;
+    // ‹ › (>= 40 px targets, reaching up over the song's line when the row
+    // is short), or a single › when two don't fit
+    if (L.inline) { // in the song's line: › at its right end (‹ at the left when wide)
+      const cy = s.cy + s.h / 2 - 16;
+      s.arrows = s.w >= 150
+        ? [{ dir: -1, x: s.cx - s.w / 2, y: cy - 20, w: 40, h: 40, cy }, { dir: 1, x: s.cx + s.w / 2 - 40, y: cy - 20, w: 40, h: 40, cy }]
+        : [{ dir: 1, x: s.cx + s.w / 2 - 40, y: cy - 20, w: 40, h: 40, cy }];
+      return;
+    }
+    const rowY = s.cy + s.h / 2 - L.arrowsH, hy = rowY - (40 - L.arrowsH);
+    s.arrows = s.w >= 84
+      ? [{ dir: -1, x: s.cx - 41, y: hy, w: 40, h: 40, cy: rowY + L.arrowsH / 2 }, { dir: 1, x: s.cx + 1, y: hy, w: 40, h: 40, cy: rowY + L.arrowsH / 2 }]
+      : [{ dir: 1, x: s.cx - 22, y: hy, w: 44, h: 40, cy: rowY + L.arrowsH / 2 }];
   });
-  cards.forEach((c) => { c.y -= dy; });
-  hintY -= dy;
-  buttons.play.y -= dy; buttons.dice.y -= dy;
+  y += ch + gap;
+  hintY = y + hintH / 2;
+  y += hintH;
+  cards.forEach((c, i) => {
+    c.w = slot; c.h = d + titleH;
+    c.x = pad + (i % perRow) * slot;
+    c.y = y + Math.floor(i / perRow) * (d + titleH + 6);
+  });
+  y += tokensH + gap;
+  const kw = Math.min(140, W - 2 * pad);
+  buttons.keep = { x: W / 2 - kw / 2, y: y + (bbH - 44) / 2, w: kw, h: 44 };
+  buttons.tempo = { x: -999, y: -999, w: 0, h: 0 };
+  buttons.key = { x: -999, y: -999, w: 0, h: 0 };
 }
+const ARROWS_H = 40;
 
 function drawCompact() {
   background(BLUE);
@@ -1042,11 +1117,26 @@ function drawCompact() {
   compactIssues = [];
   spots.forEach(drawSpotCompact);
   drawButtons();
-  if (L.hintH) {
-    fill(PAPER); textAlign(CENTER, CENTER); textStyle(BOLD); textSize(12);
-    const h = millis() < hintUntil && textWidth(tempHint.toUpperCase()) <= width - 2 * pad ? tempHint : SHORT_HINT;
-    text(h.toUpperCase(), width / 2, hintY);
+  // the instruction above the tokens; a shared table waiting for a gesture,
+  // or a passing message, take its place (on paper for the shared table)
+  textAlign(CENTER, CENTER); textStyle(BOLD);
+  let f = L.hintFit;
+  const msg = presetPending ? PRESET_HINT : millis() < hintUntil ? tempHint : null;
+  if (msg) {
+    const g = fitLines(msg, width - 2 * pad - (presetPending ? 20 : 0), 12);
+    if (g.lines.length <= f.lines.length) f = g;
   }
+  textSize(f.size);
+  const lh2 = f.size + 3, y0 = hintY - (f.lines.length - 1) * lh2 / 2;
+  if (presetPending && f !== L.hintFit) {
+    const w2 = Math.max(...f.lines.map((l) => textWidth(l))) + 20;
+    fill(PAPER); roughRect(width / 2 - w2 / 2, hintY - f.lines.length * lh2 / 2 - 4, w2, f.lines.length * lh2 + 8, 1310, 1);
+    fill(BLUE);
+  } else fill(PAPER);
+  f.lines.forEach((l, i) => {
+    if (textWidth(l) > width - 2 * pad) compactIssues.push('hint ' + l);
+    text(l, width / 2, y0 + i * lh2);
+  });
   if (!eng) {
     fill(PAPER); textSize(14); textAlign(CENTER, CENTER);
     text(loadError ? 'ERREUR : ' + loadError : 'CHARGEMENT…', width / 2, height * 0.75);
@@ -1075,6 +1165,20 @@ function drawCompact() {
   }
 }
 
+// The ‹ › under an instrument: small paper buttons, 40 px targets
+function drawArrows(s) {
+  s.arrows.forEach((a, i) => {
+    const x = a.x + a.w / 2, y = a.cy ?? a.y + a.h / 2;
+    fill(s.muted ? FADED : PAPER);
+    roughEllipse(x, y, 13, 13, 1320 + s.i * 5 + i, 0.6);
+    // a thick cut chevron (the font's ‹ › are too thin)
+    noFill(); stroke(BLUE); strokeWeight(3); strokeJoin(ROUND); strokeCap(ROUND);
+    const k = a.dir < 0 ? -1 : 1;
+    beginShape(); vertex(x - k * 3, y - 6); vertex(x + k * 3, y); vertex(x - k * 3, y + 6); endShape();
+    noStroke();
+  });
+}
+
 // The song holding the whole table (every occupied instrument), if any
 function singleSong() {
   const on = occupied();
@@ -1094,14 +1198,16 @@ function drawToken(c, x, y, d, lifted, current) {
   pop();
   if (L.tokTitles && !lifted) {
     fill(PAPER); textAlign(CENTER, TOP); textStyle(BOLD); textSize(L.tokSize);
-    if (textWidth(c.title) > c.w - 4) compactIssues.push('token ' + c.title);
-    text(c.title, x, y + d / 2 + 4);
+    (c.lines || [c.title]).forEach((ln, i) => {
+      if (textWidth(ln) > c.w - 4) compactIssues.push('token ' + ln);
+      text(ln, x, y + d / 2 + 4 + i * (L.tokSize + 2));
+    });
   }
 }
 
 function drawSpotCompact(s) {
-  const lh = 18; // the song's line under the drawing
-  const area = s.h - lh - 4;
+  const lh = L.inline ? 32 : 18; // the song's line under the drawing (then the ‹ › row)
+  const area = s.h - lh - (L.inline ? 0 : L.arrowsH || ARROWS_H) - 4;
   const r = Math.min(s.w * 0.42, area * 0.42);
   const on = !!(s.track && running);
   const lv = on && s.voice && s.voice.ready ? s.voice.level() : 0;
@@ -1135,19 +1241,25 @@ function drawSpotCompact(s) {
   drawCat(s, r, 'front');
   pop();
   // the song it plays: motif, title, part; else the instrument's name
-  const y = top + s.h - lh / 2 - 1;
+  const y = L.inline ? top + s.h - 16 : top + s.h - (L.arrowsH || ARROWS_H) - lh / 2 - 1;
+  if (s.track && s.arrows) drawArrows(s);
   textStyle(BOLD); textAlign(LEFT, CENTER);
   let ts = 13; textSize(ts);
   const draggingFromHere = drag && drag.moved && drag.from === s;
   if (s.track && !draggingFromHere) {
     const c = cardById(s.track);
-    const label = `${c.title} · ${s.part + 1}`;
+    // the room beside the ‹ › when they share the line (short screens)
+    const nA = L.inline && s.arrows ? s.arrows.length : 0;
+    const room = s.w - nA * 40 - (nA ? 4 : 0);
+    const mid = nA === 1 ? s.cx - 20 : s.cx;
+    let label = `${c.title} · ${s.part + 1}`;
     const badge = 16;
-    while (ts > 11 && textWidth(label) + badge + 4 > s.w) { ts -= 0.5; textSize(ts); }
-    const withBadge = textWidth(label) + badge + 4 <= s.w;
+    while (ts > 11 && textWidth(label) + badge + 4 > room) { ts -= 0.5; textSize(ts); }
+    if (textWidth(label) + badge + 4 > room) label = `· ${s.part + 1}`; // the motif says the song
+    const withBadge = textWidth(label) + badge + 4 <= room || label.startsWith('·');
     const tw = textWidth(label) + (withBadge ? badge + 4 : 0);
-    if (tw > s.w) compactIssues.push('spot ' + label);
-    let x = s.cx - tw / 2;
+    if (tw > room) compactIssues.push('spot ' + label);
+    let x = mid - tw / 2;
     if (withBadge) {
       fill(s.muted ? FADED : PAPER); roughEllipse(x + badge / 2, y, badge / 2, badge / 2, 600 + c.i, 0.6);
       motif(c.i, x + badge / 2, y, badge * 0.32, 700 + c.i * 17);
@@ -1174,6 +1286,151 @@ function tapToken(id) {
   wholeTrack(id);
 }
 
+// ---------- presets: a table as a short code ----------
+// "1~d07.2-p01.3-s08.4m-b0-a1": version 1; per instrument (d drums, p piano,
+// s synth, b bass) the song's number (01-10, 0 = none), "." its part
+// (1-based), "m" when muted; "a1"/"a0" the align switch. Charset
+// [A-Za-z0-9._~-], at most 200 chars. Anything unknown or invalid is ignored
+const PRESET_LETTERS = { drums: 'd', piano: 'p', synth: 's', bass: 'b' };
+const PRESET_HINT = 'Touchez ▶ pour écouter cette combinaison';
+let presetPending = false;
+function encodePreset() {
+  const parts = INSTS.map((inst) => {
+    const s = spotOf(inst), l = PRESET_LETTERS[inst];
+    if (!s.track) return l + '0';
+    const n = eng.tracks.findIndex((t) => t.id === s.track) + 1;
+    return `${l}${String(n).padStart(2, '0')}.${s.part + 1}${s.muted ? 'm' : ''}`;
+  });
+  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}`;
+}
+function decodePreset(code) {
+  if (!eng || typeof code !== 'string' || !code.length || code.length > 200 || !/^[A-Za-z0-9._~-]+$/.test(code)) return null;
+  const m = /^1~(.*)$/.exec(code);
+  if (!m) return null;
+  const byLetter = { d: 'drums', p: 'piano', s: 'synth', b: 'bass' };
+  const out = { spots: {}, align: null };
+  for (const tok of m[1].split('-')) {
+    const a = /^a([01])$/.exec(tok);
+    if (a) { if (out.align === null) out.align = a[1] === '1'; continue; }
+    const t = /^([dpsb])(?:0|(\d{2})\.(\d{1,2})(m?))$/.exec(tok);
+    if (!t) continue;
+    const inst = byLetter[t[1]];
+    if (inst in out.spots) continue;
+    if (t[2] === undefined) { out.spots[inst] = null; continue; }
+    const tr = eng.tracks[Number(t[2]) - 1];
+    const k = Number(t[3]) - 1;
+    if (!tr || !(k >= 0 && k < (tr.parts || []).length) || !accepts(spotOf(inst), tr.id)) continue;
+    out.spots[inst] = { track: tr.id, part: k, muted: t[4] === 'm' };
+  }
+  // instruments holding one song play one part: the first one's
+  const first = {};
+  Object.values(out.spots).forEach((v) => { if (v) { if (!(v.track in first)) first[v.track] = v.part; v.part = first[v.track]; } });
+  return Object.keys(out.spots).length || out.align !== null ? out : null;
+}
+// The table as the code says, silent until a gesture (browsers need one)
+function applyPreset(p) {
+  if (!p) return false;
+  stopTable();
+  INSTS.forEach((inst) => {
+    const s = spotOf(inst), v = p.spots[inst];
+    s.track = v ? v.track : null; s.part = v ? v.part : 0; s.muted = v ? v.muted : false;
+  });
+  if (p.align !== null) { tempoOn = keyOn = p.align; eng.tempoMatch = p.align; }
+  presetPending = occupied().length > 0;
+  if (presetPending) { hint = PRESET_HINT; started = true; }
+  layout();
+  return true;
+}
+// The frame's hash, from the site: "#page=<the tile page's address>&preset=<code>"
+// (the playground: "#preset=<code>" alone)
+const DEFAULT_PAGE = 'https://picasol.fr/code/remix-pinkasol';
+function hashParams() {
+  try { return new URLSearchParams((location.hash || '').replace(/^#/, '')); } catch (e) { return new URLSearchParams(); }
+}
+// The page to link to: an https:// address (http://localhost for tests),
+// without its own query or hash, <= 300 chars; else picasol.fr's
+function pageUrl() {
+  const p = hashParams().get('page');
+  if (p && p.length <= 300 && !/[?#\s]/.test(p)) {
+    try {
+      const u = new URL(p);
+      if (u.protocol === 'https:' || (u.protocol === 'http:' && u.hostname === 'localhost')) return p;
+    } catch (e) { /* not an address */ }
+  }
+  return DEFAULT_PAGE;
+}
+const presetLink = () => `${pageUrl()}?preset=${encodePreset()}`;
+function loadPresetFromHash() {
+  const code = hashParams().get('preset');
+  return code ? applyPreset(decodePreset(code)) : false;
+}
+// One line describing the mix, for the e-mail
+function mixLine() {
+  return INSTS.map((inst) => spotOf(inst)).filter((s) => s.track)
+    .map((s) => `${NAMES[s.inst].toLowerCase()} : ${eng.byId[s.track].title} ${s.part + 1}${s.muted ? ' (coupé)' : ''}`)
+    .join(' · ');
+}
+
+// The "Garder" panel (HTML: the code must be selectable)
+let shareWaiting = false, shareTimer = null;
+const $ = (id) => document.getElementById(id);
+function openKeep() {
+  if (!eng) return;
+  const link = presetLink();
+  $('keep-code').textContent = link;
+  $('keep-mix').textContent = mixLine() || 'Une table vide';
+  $('keep-msg').textContent = '';
+  $('keep').hidden = false;
+  window.lastPreset = encodePreset();
+}
+function closeKeep() { $('keep').hidden = true; shareWaiting = false; clearTimeout(shareTimer); }
+function shareFallback() {
+  shareWaiting = false; clearTimeout(shareTimer);
+  $('keep-msg').textContent = 'Envoyez ce lien à picasol@picasol.fr';
+}
+function shareKeep() {
+  const code = encodePreset();
+  if (window.parent === window) return shareFallback(); // the playground: no site page around
+  shareWaiting = true;
+  $('keep-msg').textContent = 'Ouverture de votre messagerie…';
+  try {
+    window.parent.postMessage({ tf: 'code-share', preset: code, url: presetLink(), title: 'Remix Pinkasol !', text: mixLine() }, '*');
+  } catch (e) { return shareFallback(); }
+  shareTimer = setTimeout(() => { if (shareWaiting) shareFallback(); }, 1500);
+}
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || typeof d !== 'object' || d.tf !== 'code-share' || typeof d.ok !== 'boolean' || !shareWaiting) return;
+  shareWaiting = false; clearTimeout(shareTimer);
+  if (d.ok) $('keep-msg').textContent = 'Votre e-mail est prêt dans votre messagerie';
+  else shareFallback();
+});
+const keepOpen = () => !$('keep').hidden;
+
+function drawKeepButton() {
+  const k = buttons.keep;
+  if (!k || !k.w) return;
+  const hot = !drag && mouseX >= k.x && mouseX <= k.x + k.w && mouseY >= k.y && mouseY <= k.y + k.h;
+  fill(PAPER);
+  roughRect(k.x + 2, k.y + 4, k.w - 4, k.h - 8, 1300, 1);
+  textStyle(BOLD); textSize(13); textAlign(CENTER, CENTER);
+  const label = 'GARDER', hw = textWidth('♥ ');
+  const x0 = k.x + k.w / 2 - textWidth('♥ ' + label) / 2;
+  fill(ORANGE); textAlign(LEFT, CENTER); text('♥', x0, k.y + k.h / 2 - 1 - (hot ? 1 : 0));
+  fill(BLUE); text(label, x0 + hw, k.y + k.h / 2 - 1);
+}
+
+// Compact: the part of an instrument's song, one step back or on
+function stepPart(s, dir) {
+  if (!s.track) return;
+  const id = s.track, ks = offered(id);
+  if (!ks.length) return;
+  const i = ks.indexOf(s.part);
+  const k = ks[i < 0 ? 0 : (i + dir + ks.length) % ks.length];
+  say(`${eng.byId[id].title} : partie ${k + 1}`);
+  choosePart(id, k);
+}
+
 // ---------- p5 ----------
 function setup() {
   pixelDensity(Math.min(2, displayDensity()));
@@ -1183,9 +1440,12 @@ function setup() {
   c.elt.addEventListener('pointerup', up);
   c.elt.addEventListener('pointercancel', up);
   c.elt.addEventListener('contextmenu', (e) => e.preventDefault());
-  // Space: play / stop (no page scroll, no auto-repeat)
+  $('keep-share').addEventListener('click', shareKeep);
+  $('keep-close').addEventListener('click', closeKeep);
+  // Space: play / stop (no page scroll, no auto-repeat; not while the panel is open)
   window.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' && e.key !== ' ') return;
+    if (keepOpen()) return;
     e.preventDefault();
     if (!e.repeat) mainButton();
   });
@@ -1197,9 +1457,10 @@ function setup() {
     cards = e.tracks.map((t, i) => ({ id: t.id, title: t.title.toUpperCase(), i, x: 0, y: 0, w: 0, h: 0, shake: 0 }));
     window.cards = cards;
     layout();
+    loadPresetFromHash();
   }).catch((err) => { loadError = String(err); console.error(err); });
   window.spots = spots;
-  window.table = { toggleAlign, get sliders() { return !!L.sliders; }, get compact() { return !!L.compact; }, get issues() { return compactIssues; }, singleSong, tapToken, get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
+  window.table = { encodePreset, decodePreset, applyPreset, openKeep, presetLink, stepPart, get presetPending() { return presetPending; }, toggleAlign, get sliders() { return !!L.sliders; }, get compact() { return !!L.compact; }, get issues() { return compactIssues; }, singleSong, tapToken, get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
   layout();
 }
 function windowResized() { resizeCanvas(windowWidth, windowHeight); layout(); }
@@ -1309,8 +1570,9 @@ function drawButtons() {
     ctx2.restore();
   }
   pop();
+  drawKeepButton();
   fill(PAPER); textSize(12); textAlign(LEFT, CENTER); textStyle(BOLD);
-  if (d.x + d.r * 1.2 + 8 + textWidth('AU HASARD') < width - 6) text('AU HASARD', d.x + d.r * 1.2 + 8, d.y);
+  if (!L.compact && d.x + d.r * 1.2 + 8 + textWidth('AU HASARD') < width - 6) text('AU HASARD', d.x + d.r * 1.2 + 8, d.y);
 }
 
 function drawTempoSwitch() {
@@ -1807,6 +2069,15 @@ function down(e) {
   eng.unlock();
   if (onButton(buttons.play, x, y)) { drag = { kind: 'play' }; return; }
   if (onButton(buttons.dice, x, y)) { drag = { kind: 'dice' }; return; }
+  const kp = buttons.keep;
+  if (kp && x >= kp.x && x <= kp.x + kp.w && y >= kp.y && y <= kp.y + kp.h) { drag = { kind: 'keep' }; return; }
+  if (L.compact) { // the ‹ › under an instrument
+    for (const s of spots) {
+      if (!s.track || !s.arrows) continue;
+      const a = s.arrows.find((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+      if (a) { drag = { kind: 'arrow', s, dir: a.dir }; return; }
+    }
+  }
   const tb = buttons.tempo, kb = buttons.key;
   if (x >= tb.x && x <= tb.x + tb.w && y >= tb.y && y <= tb.y + tb.h) { drag = { kind: 'tempo' }; return; }
   if (x >= kb.x && x <= kb.x + kb.w && y >= kb.y && y <= kb.y + kb.h) { drag = { kind: 'key' }; return; }
@@ -1857,6 +2128,8 @@ function up(e) {
   drag = null;
   if (d.kind === 'slider') return;
   if (d.kind === 'play') return mainButton();
+  if (d.kind === 'keep') return openKeep();
+  if (d.kind === 'arrow') return stepPart(d.s, d.dir);
   if (d.kind === 'dice') { hatPop = millis(); return randomTable(); }
   if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
