@@ -65,3 +65,10 @@ they show the result of the analysis (bars, parts, which instruments play).
 Picasol: Nicolas Boulicault (piano, composition), Antoine Scherrer (drums,
 synth, composition). Recording, mixing, mastering: Marc-Etienne Géry. Cover:
 Aurélie Epenoy, Émilie Gréa and Clara Juncker.
+
+## Licence
+
+The code is under the [MIT licence](LICENSE). It doesn't cover Picasol's
+music (tracks, stems, parts) nor the cover, which aren't in this repository
+and stay all rights reserved. `lib/p5.min.js` is p5.js 1.11.13, under its own
+licence (LGPL 2.1).
