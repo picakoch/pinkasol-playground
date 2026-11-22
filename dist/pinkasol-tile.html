@@ -2079,6 +2079,10 @@ const onButton = (b, x, y) => dist(x, y, b.x, b.y) <= Math.max(b.r + 6, MIN_TOUC
 
 function down(e) {
   if (!eng) return;
+  // The tap that started the tile (on the site's still) may arrive here as
+  // a late click once the frame is in place: ignore the first half second,
+  // or it would replace a loaded combination
+  if (millis() < 500) return;
   const { x, y } = pos(e);
   if (!started) { started = true; hint = HINT1; }
   eng.unlock();
