@@ -273,9 +273,11 @@ def load_edits():
 
 def parts_from_edits(edited, stems, bars, norm, mix):
     """The owner's parts, as select_parts() gives them. `bar` and `bars` may
-    be fractions of a bar (quarter bars, the editor's snap): a position
-    inside a bar is interpolated between its bar line and the next (beats).
-    start/end snapped to the attacks (±70 ms), `playing` by the same strict
+    be fractions of a bar: a position inside a bar is interpolated between
+    its bar line and the next. A position on the quarter-bar grid (the
+    editor's snaps) is snapped to the attacks (±70 ms, kept to the ms as
+    before); one off the grid (the editor's Libre step) is used exactly, as
+    placed by ear (to the µs); `playing` by the same strict
     rule (present in 3/4 of the bars it covers, a bar counted when at least
     half covered), `all` when every stem plays (or, in a song where bass and
     synth never meet, every stem but one of those two), unless the owner
@@ -283,7 +285,9 @@ def parts_from_edits(edited, stems, bars, norm, mix):
     n = len(bars) - 1
     bars = np.asarray(bars, dtype=float)
     snap = snapper(mix)
-    q = lambda x: round(float(x) * 4) / 4
+    q = lambda x: round(float(x), 6)
+    on_grid = lambda x: abs(x * 4 - round(x * 4)) < 1e-6
+    place = lambda x: round(snap(time_at(x)), 3) if on_grid(x) else round(time_at(x), 6)
 
     def time_at(x):
         k = int(min(max(np.floor(x), 0), n - 1))
@@ -301,8 +305,8 @@ def parts_from_edits(edited, stems, bars, norm, mix):
 
     parts = []
     for e in sorted(edited, key=lambda e: (float(e["bar"]), float(e["bars"]))):
-        s = min(max(q(e["bar"]), 0.0), n - 0.25)
-        L = min(max(q(e["bars"]), 0.25), n - s)
+        s = min(max(q(e["bar"]), 0.0), n - 0.0625)
+        L = min(max(q(e["bars"]), 0.0625), n - s)
         ks = covered(s, L)
         playing = [i for i in stems if plays(i, ks)]
         everyone = len(playing) == len(stems)
@@ -311,7 +315,7 @@ def parts_from_edits(edited, stems, bars, norm, mix):
             everyone = all(i in playing for i in others) and (("bass" in playing) != ("synth" in playing))
         part = {
             "bar": s if s % 1 else int(s), "bars": L if L % 1 else int(L),
-            "start": round(snap(time_at(s)), 3), "end": round(snap(time_at(s + L)), 3),
+            "start": place(s), "end": place(q(s + L)),
             "playing": playing, "all": everyone, "all_auto": everyone, "edited": True,
         }
         if isinstance(e.get("star"), bool):

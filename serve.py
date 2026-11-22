@@ -121,14 +121,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def save_parts(body):
     """parts.html's edits: { track: [ {bar, bars, star?}, ... ] }, bar and
-    bars in quarter bars; {} or a track left out = the analyser's parts"""
+    bars in bars (6 decimals); {} or a track left out = the analyser's parts"""
     edits = json.loads(body)
-    def q(x):  # quarter bars (the editor's snap); whole bars stay integers
-        v = round(float(x) * 4) / 4
+    def q(x):  # bars, 6 decimals (the editor's Libre step); whole bars stay integers
+        v = round(float(x), 6)
         return int(v) if v.is_integer() else v
 
     def part(p):
-        out = {"bar": q(p["bar"]), "bars": max(0.25, q(p["bars"]))}
+        out = {"bar": q(p["bar"]), "bars": max(0.0625, q(p["bars"]))}
         if isinstance(p.get("star"), bool):  # the owner's ★ (absent = automatic)
             out["star"] = p["star"]
         return out

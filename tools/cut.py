@@ -42,7 +42,7 @@ LOOP_VERSION = "xf40-pre100"
 def pcm(src, start, dur):
     """Stereo float32 samples of src from start, dur seconds long."""
     raw = subprocess.run(
-        ["ffmpeg", "-v", "error", "-ss", f"{max(0.0, start):.4f}", "-t", f"{dur:.4f}", "-i", str(src),
+        ["ffmpeg", "-v", "error", "-ss", f"{max(0.0, start):.6f}", "-t", f"{dur:.6f}", "-i", str(src),
          "-f", "f32le", "-ac", "2", "-ar", str(SR), "-"],
         check=True, capture_output=True).stdout
     return np.frombuffer(raw, dtype=np.float32).reshape(-1, 2).copy()
@@ -82,6 +82,12 @@ def cut(src, start, end, dest):
     )
 
 
+def ms(part):
+    """A part whose bounds are to the ms (the analyser, the editor's
+    snaps); off the grid (the editor's Libre step), they are to the µs"""
+    return round(part["start"], 3) == part["start"] and round(part["end"], 3) == part["end"]
+
+
 def main():
     analysis = json.loads((AUDIO / "analysis.json").read_text())
     picks_path = AUDIO / "picks.json"
@@ -119,7 +125,10 @@ def main():
         for k, part in enumerate(a.get("parts", [])):
             files = {}
             for inst in a["pieces"]:
-                h = hashlib.sha1(f"{track}|{inst}|{part['start']:.3f}|{part['end']:.3f}|{LOOP_VERSION}".encode()).hexdigest()[:6]
+                # a time to the ms keeps its old key (the files cut before the
+                # editor's Libre step keep their names); a free one, to the µs
+                key = lambda x: f"{x:.3f}" if round(x, 3) == x else f"{x:.6f}"
+                h = hashlib.sha1(f"{track}|{inst}|{key(part['start'])}|{key(part['end'])}|{LOOP_VERSION}".encode()).hexdigest()[:6]
                 name = f"p{k + 1}-{inst}-{h}.mp3"
                 if not (OUT / track / name).exists():
                     cut_loop(AUDIO / "stems" / track / f"{inst}.mp3", part["start"], part["end"], OUT / track / name)
@@ -127,7 +136,7 @@ def main():
                 keep.add(name)
             entry["parts"].append({
                 "start": part["start"], "end": part["end"], "bars": part["bars"],
-                "loop_end": round(part["end"] - part["start"], 3), "offset": preroll(part["start"]),
+                "loop_end": round(part["end"] - part["start"], 3 if ms(part) else 6), "offset": preroll(part["start"]),
                 "playing": part["playing"],
                 "all": part.get("all", False), "files": files,
             })
