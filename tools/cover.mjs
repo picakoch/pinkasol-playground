@@ -47,12 +47,21 @@ await page.addScriptTag({ content: `window.poster = function (S) {
   roughRect(90 * u, 822 * u, 18 * u, 120 * u, 502, 2 * u);
   roughRect(S - 108 * u, 822 * u, 18 * u, 120 * u, 503, 2 * u);
   INK = PAPER;
-  const inst = [['piano', 190, 690, 118], ['drums', 470, 680, 128], ['synth', 760, 715, 112], ['bass', 1030, 680, 118]];
-  inst.forEach(([name, x, y, r], i) => { push(); translate(x * u, y * u); drawInstrument(name, r * u, 100 + i * 31); pop(); });
+  // Drums first, as on the table; each with its cat (body behind, head
+  // and paws in front), paws on the instrument, eyes open
+  const inst = [['drums', 200, 690, 124], ['piano', 470, 690, 116], ['synth', 760, 715, 110], ['bass', 1030, 690, 116]];
+  inst.forEach(([name, x, y, r], i) => {
+    const s = { ...spotOf(name), track: '08_Pinkasol', muted: false, voice: null, pulse: 0, shake: 0 };
+    push(); translate(x * u, y * u);
+    INK = PAPER; drawCat(s, r * u, 'back');
+    INK = PAPER; drawInstrument(name, r * u, 100 + s.i * 31);
+    drawCat(s, r * u, 'front');
+    pop();
+  });
 
   // Stars around them, as on the table when it plays
   fill(ORANGE);
-  [[880, 160, 40], [1040, 300, 26], [800, 470, 30], [1110, 520, 46], [330, 520, 22], [620, 545, 34], [150, 545, 30], [960, 610, 20], [1140, 140, 22]]
+  [[880, 160, 40], [1040, 300, 26], [800, 470, 30], [1110, 520, 46], [330, 520, 22], [620, 545, 34], [1140, 140, 22]]
     .forEach(([x, y, R], i) => star(x * u, y * u, R * u, 200 + i * 7));
 
   // Track cards, one being dropped on the piano (a dashed path)

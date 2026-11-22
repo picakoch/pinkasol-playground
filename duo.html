@@ -31,7 +31,8 @@ const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', FADED = '#7f97c7'
 let INK = PAPER, INK0 = PAPER; // the instruments' paper: faded while silent or muted
 // p5 wraps the name in quotes: close and reopen them to pass a fallback list
 const FONT = 'Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif, "x';
-const INSTS = ['piano', 'drums', 'synth', 'bass'];
+// Left to right: the drums first (owner, 2026-11-22)
+const INSTS = ['drums', 'piano', 'synth', 'bass'];
 const NAMES = { piano: 'PIANO', drums: 'BATTERIE', synth: 'SYNTHÉ', bass: 'BASSE' };
 const ARTICLE = { piano: 'le piano', drums: 'la batterie', synth: 'le synthé', bass: 'la basse' };
 const DEFAULT_TRACK = '08_Pinkasol';
@@ -44,6 +45,8 @@ let eng = null, loadError = null, started = false;
 let running = false, opSeq = 0, tempoOn = true, keyOn = true;
 let hint = HINT0, hintUntil = 0, tempHint = '';
 const VOL_MAX = 1.2;
+// An instrument's spot by name (never by position: the order can change)
+const spotOf = (inst) => spots.find((s) => s.inst === inst);
 const spots = INSTS.map((inst, i) => ({ inst, i, track: null, part: 0, muted: false, vol: 1, voice: null, pending: 0,
   cx: 0, cy: 0, w: 0, h: 0, pulse: 0, shake: 0 }));
 let cards = [];
@@ -241,7 +244,7 @@ function pieceFor(s) {
 }
 // The key switch: the synth (only it) moved to the piano's key, in semitones
 function synthShift() {
-  const piano = spots[0].track, synth = spots[2].track;
+  const piano = spotOf('piano').track, synth = spotOf('synth').track;
   if (!keyOn || !piano || !synth || piano === synth) return 0;
   return eng.keyShift(eng.byId[synth].key, eng.byId[piano].key);
 }
@@ -309,7 +312,7 @@ function startTable(extra = []) {
   // switch is on), every instrument aligned
   return launch(occupied(), extra, true);
 }
-const drumsOn = (id) => spots[1].track === id;
+const drumsOn = (id) => spotOf('drums').track === id;
 function stopTable() {
   running = false;
   opSeq++;
@@ -953,11 +956,13 @@ function tempoNote(s) {
 // paper-white, the bassist mid-blue. Body and tail behind the instrument,
 // head, arms, paws and the stick in front. Units: the instrument's r
 const CAT_DARK = '#0d1733';
+// Fat cats on the drums and the synth, regular cats on the piano and the
+// bass (owner, 2026-11-22)
 const CATS = {
-  piano: { fur: CAT_DARK, cut: PAPER, line: PAPER, mask: true, head: [0.02, -0.96], body: [0, -0.4, 0.5, 0.6], hr: 0.28 },
-  drums: { fur: '#a9c1ee', cut: BLUE, line: null, head: [0.04, -1.05], body: [0, -0.5, 0.4, 0.66], hr: 0.27, tall: 1.12 },
-  synth: { fur: PAPER, cut: BLUE, line: null, head: [-0.14, -0.8], body: [-0.14, -0.3, 0.44, 0.5], hr: 0.27 },
-  bass: { fur: '#5b7ecb', cut: PAPER, line: PAPER, head: [-0.42, -0.86], body: [-0.34, -0.22, 0.42, 0.62], hr: 0.27 },
+  piano: { fur: CAT_DARK, cut: PAPER, line: PAPER, mask: true, head: [0.02, -0.96], body: [0, -0.42, 0.38, 0.6], hr: 0.26 },
+  drums: { fur: '#a9c1ee', cut: BLUE, line: null, head: [0.04, -1.0], body: [0, -0.44, 0.64, 0.62], hr: 0.31 },
+  synth: { fur: PAPER, cut: BLUE, line: null, head: [-0.14, -0.84], body: [-0.14, -0.3, 0.62, 0.54], hr: 0.31 },
+  bass: { fur: '#5b7ecb', cut: PAPER, line: PAPER, head: [-0.42, -0.86], body: [-0.36, -0.24, 0.34, 0.62], hr: 0.26 },
 };
 // What the cat does now: 'sleep' (no song), 'muted' (paws on its ears),
 // 'play', or 'idle' (a song, the table stopped)
@@ -1241,7 +1246,7 @@ function drawSpot(s) {
       let note = notes.join(' · ');
       const kn = keyNote(s);
       if (kn) { // the keys too, when there is room
-        const keys = `${eng.byId[s.track].key} → ${eng.byId[spots[0].track].key}`.toUpperCase();
+        const keys = `${eng.byId[s.track].key} → ${eng.byId[spotOf('piano').track].key}`.toUpperCase();
         if (textWidth(note + ' · ' + keys) < s.w - 36) note += ' · ' + keys;
       }
       text(note, s.cx - (L.sliders ? 14 : 0), y - 9);
