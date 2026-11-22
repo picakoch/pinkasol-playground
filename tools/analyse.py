@@ -272,31 +272,54 @@ def load_edits():
 
 
 def parts_from_edits(edited, stems, bars, norm, mix):
-    """The owner's parts, as select_parts() gives them: start/end on bar
-    lines snapped to the attacks, `playing` by the same strict rule (present
-    in 3/4 of the bars), `all` when every stem plays (or, in a song where
-    bass and synth never meet, every stem but one of those two)."""
+    """The owner's parts, as select_parts() gives them. `bar` and `bars` may
+    be fractions of a bar (quarter bars, the editor's snap): a position
+    inside a bar is interpolated between its bar line and the next (beats).
+    start/end snapped to the attacks (±70 ms), `playing` by the same strict
+    rule (present in 3/4 of the bars it covers, a bar counted when at least
+    half covered), `all` when every stem plays (or, in a song where bass and
+    synth never meet, every stem but one of those two), unless the owner
+    forced it (`star`: true/false)."""
     n = len(bars) - 1
+    bars = np.asarray(bars, dtype=float)
     snap = snapper(mix)
+    q = lambda x: round(float(x) * 4) / 4
 
-    def plays(i, s, L):
-        return float((norm[i][s:s + L] > 0.25).mean()) >= 0.75
+    def time_at(x):
+        k = int(min(max(np.floor(x), 0), n - 1))
+        return float(bars[k] + (x - k) * (bars[k + 1] - bars[k]))
+
+    def covered(s, L):
+        out = []
+        for k in range(int(np.floor(s)), int(np.ceil(s + L))):
+            if 0 <= k < n and min(k + 1, s + L) - max(k, s) >= 0.5:
+                out.append(k)
+        return out or [int(min(max(np.floor(s), 0), n - 1))]
+
+    def plays(i, ks):
+        return float((norm[i][ks] > 0.25).mean()) >= 0.75
 
     parts = []
-    for e in sorted(edited, key=lambda e: (int(e["bar"]), int(e["bars"]))):
-        s = max(0, min(int(e["bar"]), n - 1))
-        L = max(1, min(int(e["bars"]), n - s))
-        playing = [i for i in stems if plays(i, s, L)]
+    for e in sorted(edited, key=lambda e: (float(e["bar"]), float(e["bars"]))):
+        s = min(max(q(e["bar"]), 0.0), n - 0.25)
+        L = min(max(q(e["bars"]), 0.25), n - s)
+        ks = covered(s, L)
+        playing = [i for i in stems if plays(i, ks)]
         everyone = len(playing) == len(stems)
         if not everyone and "bass" in stems and "synth" in stems:
             others = [i for i in stems if i not in ("bass", "synth")]
             everyone = all(i in playing for i in others) and (("bass" in playing) != ("synth" in playing))
-        parts.append({
-            "bar": s, "bars": L,
-            "start": round(snap(float(bars[s])), 3), "end": round(snap(float(bars[s + L])), 3),
-            "playing": playing, "all": everyone, "edited": True,
-        })
+        part = {
+            "bar": s if s % 1 else int(s), "bars": L if L % 1 else int(L),
+            "start": round(snap(time_at(s)), 3), "end": round(snap(time_at(s + L)), 3),
+            "playing": playing, "all": everyone, "all_auto": everyone, "edited": True,
+        }
+        if isinstance(e.get("star"), bool):
+            part["star"] = e["star"]
+            part["all"] = e["star"]
+        parts.append(part)
     return parts
+
 
 def analyse(track, meta):
     folder = STEMS / track

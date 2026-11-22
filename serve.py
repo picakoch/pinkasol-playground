@@ -120,13 +120,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 def save_parts(body):
-    """parts.html's edits: { track: [ {bar, bars}, ... ] }; {} or a track
-    left out = the analyser's parts"""
+    """parts.html's edits: { track: [ {bar, bars, star?}, ... ] }, bar and
+    bars in quarter bars; {} or a track left out = the analyser's parts"""
     edits = json.loads(body)
-    clean = {
-        str(track): [{"bar": int(p["bar"]), "bars": int(p["bars"])} for p in parts]
-        for track, parts in edits.items() if parts
-    }
+    def q(x):  # quarter bars (the editor's snap); whole bars stay integers
+        v = round(float(x) * 4) / 4
+        return int(v) if v.is_integer() else v
+
+    def part(p):
+        out = {"bar": q(p["bar"]), "bars": max(0.25, q(p["bars"]))}
+        if isinstance(p.get("star"), bool):  # the owner's ★ (absent = automatic)
+            out["star"] = p["star"]
+        return out
+    clean = {str(track): [part(p) for p in parts] for track, parts in edits.items() if parts}
     path = ROOT / "audio" / "parts-edit.json"
     if clean:
         path.write_text(json.dumps(dict(sorted(clean.items())), indent=1) + "\n")
