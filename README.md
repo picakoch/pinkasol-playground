@@ -34,7 +34,13 @@ but stays silent.
 
 `dist/pinkasol-tile.html` is the tile, ready to paste: in edit mode on the
 site, **+ Code tile**, paste the file's content, tick **p5.js**, capture or
-upload a still, create. 77 KB of the 200 KB a code tile allows.
+upload a still (`dist/pinkasol-tile-cover.png`, below), create. 99 KB of the
+200 KB a code tile allows.
+
+![The tile's still](dist/pinkasol-tile-cover.png)
+
+The still is a poster of the table, drawn with its own shapes (`make cover`,
+with `serve.py` running and `npm install` once).
 
     make tile         # rebuild it from duo.html, the engine and the manifest
     make tile-local   # the same for this playground:

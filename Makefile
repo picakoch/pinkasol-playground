@@ -1,7 +1,7 @@
 # Pinkasol playground. `make` alone builds the tile.
 PY := tools/.venv/bin/python
 
-.PHONY: tile tile-local serve serve-lan venv analyse parts edges audio upload upload-dry
+.PHONY: tile tile-local serve serve-lan venv analyse parts edges audio upload upload-dry cover
 
 # The Tilefolio code tile: dist/pinkasol-tile.html, to paste in the code
 # panel (tick p5.js). Rebuilt from duo.html, lib/pinkasol-engine.js and the
@@ -48,3 +48,8 @@ upload:
 
 upload-dry:
 	$(NODE) tools/upload.mjs --dry-run
+
+# The tile's still: a poster of the table (not the album cover), drawn with
+# duo.html's shapes; needs serve.py running and `npm install`
+cover:
+	$(NODE) tools/cover.mjs

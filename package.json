@@ -1,0 +1,7 @@
+{
+  "name": "pinkasol-playground",
+  "private": true,
+  "type": "module",
+  "description": "Tools of the Pinkasol playground (make cover)",
+  "devDependencies": { "playwright": "^1.65.1" }
+}
