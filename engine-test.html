@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>engine test</title>
+<script src="/lib/pinkasol-engine.js"></script>
+<pre id="out">click</pre>
+<script>
+// Key + tempo matching: Noisette's drums lead (F minor), Clarita's piano
+// (G major) is the key; Cosmos' synth (Bb minor) is transposed to fit it
+document.onclick = async () => {
+  const eng = window.eng = await Pinkasol.engine(); await eng.unlock();
+  const T = (id) => eng.byId[id];
+  const shift = Pinkasol.keyShift(T('09_Cosmos').key, T('03_Clarita').key);
+  const run = async (tempo) => {
+    eng.tempoMatch = tempo;
+    const drums = eng.part('04_Noisette', 0).drums;
+    const piano = eng.part('03_Clarita', 3).piano;
+    const synth = { ...eng.part('09_Cosmos', 4).synth, semitones: shift };
+    const vs = await eng.playTogether([drums, piano, synth], { immediate: true }, eng.voices);
+    await new Promise((r) => setTimeout(r, 2500));
+    const k = eng.clock;
+    return { tempo, clockBar: +k.bar.toFixed(4), voices: vs.map((v) => ({ inst: v.inst, semis: v.semitones || 0, rate: +v.rate.toFixed(4),
+      realLoop: +(v.loopLen / v.rate).toFixed(4), barsXclock: +(v.piece.bars * k.bar).toFixed(4), startDiffMs: +((v.startsAt - vs[0].startsAt) * 1000).toFixed(2), level: +v.level().toFixed(2) })) };
+  };
+  const res = { shift: `${T('09_Cosmos').key} -> ${T('03_Clarita').key}: ${shift}`, on: await run(true), off: await run(false),
+    examples: ['01_Rototo','02_Arroyoyo','05_Malavista','10_El_Tigre'].map((s) => `${T(s).key}→${T('03_Clarita').key}: ${Pinkasol.keyShift(T(s).key, T('03_Clarita').key)}`) };
+  out.textContent = JSON.stringify(res, null, 1);
+};
+</script>

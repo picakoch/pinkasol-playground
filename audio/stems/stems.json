@@ -1,0 +1,131 @@
+{
+  "01_Rototo": {
+    "title": "Rototo",
+    "key": "Ab minor",
+    "bpm": 120,
+    "tuning_hz": 442,
+    "stems": [
+      "bass",
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  },
+  "02_Arroyoyo": {
+    "title": "Arroyoyo",
+    "key": "F minor",
+    "bpm": 137,
+    "tuning_hz": 441,
+    "stems": [
+      "bass",
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  },
+  "03_Clarita": {
+    "title": "Clarita",
+    "key": "G major",
+    "bpm": 120,
+    "tuning_hz": 442,
+    "stems": [
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  },
+  "04_Noisette": {
+    "title": "Noisette",
+    "key": "F minor",
+    "bpm": 98,
+    "tuning_hz": 441,
+    "stems": [
+      "bass",
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  },
+  "05_Malavista": {
+    "title": "Malavista",
+    "key": "F minor",
+    "bpm": 229,
+    "tuning_hz": 442,
+    "stems": [
+      "bass",
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 13
+  },
+  "06_Exit_B": {
+    "title": "Exit B",
+    "key": "C minor",
+    "bpm": 127,
+    "tuning_hz": 442,
+    "stems": [
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4,
+    "free_until": 21.0,
+    "note": "127 bpm 4/4; rubato opening until ~21 s (owner, 2026-11-22)",
+    "bpm_by_ear": true
+  },
+  "07_Asperges": {
+    "title": "Asperges",
+    "key": "D major",
+    "bpm": 120,
+    "tuning_hz": 441,
+    "stems": [
+      "bass",
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  },
+  "08_Pinkasol": {
+    "title": "Pinkasol",
+    "key": "G minor",
+    "bpm": 120,
+    "tuning_hz": 442,
+    "stems": [
+      "bass",
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  },
+  "09_Cosmos": {
+    "title": "Cosmos",
+    "key": "Bb minor",
+    "bpm": 97,
+    "tuning_hz": 441,
+    "stems": [
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  },
+  "10_El_Tigre": {
+    "title": "El Tigre",
+    "key": "G major",
+    "bpm": 134,
+    "tuning_hz": 440,
+    "stems": [
+      "drums",
+      "piano",
+      "synth"
+    ],
+    "meter": 4
+  }
+}

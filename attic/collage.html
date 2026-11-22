@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinkasol — le collage</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #174596; overflow: hidden; }
+  canvas { display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+  a.back { position: fixed; top: 10px; left: 12px; z-index: 2; color: #fdfdfd; text-decoration: none;
+    font: 800 14px/1 "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif; letter-spacing: .08em;
+    text-transform: uppercase; opacity: .85; }
+  a.back:hover { opacity: 1; }
+</style>
+<script src="/lib/p5.min.js"></script>
+<script src="/lib/pinkasol-engine.js"></script>
+</head>
+<body>
+<a class="back" href="/">← Pinkasol</a>
+<script>
+// Le collage — Pinkasol in paper-cut shards (one per track).
+// Click a shard: it slides onto the stage and plays a fragment; each further
+// click moves to its next instrument (batterie → piano → synthé → basse →
+// silence). Drag a shard: its distance to the centre is its volume — the mix
+// is where the shapes lie. Overlaps of sounding shards are cut in orange.
+// Four shards sound at most. After 25 s without a gesture the collage plays
+// itself, one change every few bars.
+'use strict';
+
+const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', SHADE = '#0e2c66';
+const FONT = '"Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif';
+const ORDER = ['drums', 'piano', 'synth', 'bass'];
+const NAMES = { drums: 'batterie', piano: 'piano', synth: 'synthé', bass: 'basse' };
+const MAX_SOUNDING = 4;
+const IDLE_MS = 25000;
+
+let eng = null, shards = [], unlocked = false, lastInput = 0, nextAuto = 0, autoOn = false;
+let stagePaths = [];
+let drag = null; // { shard, id, dx, dy, x0, y0, moved }
+
+// Seeded randomness: the same collage at every visit (and in the still)
+function rng(seed) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// A hand-cut outline: a few corners, every edge nicked a little
+function cutShape(r) {
+  const n = 5 + Math.floor(r() * 3);
+  const corners = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + (r() - 0.5) * 0.7;
+    corners.push([Math.cos(a) * (0.78 + r() * 0.4), Math.sin(a) * (0.78 + r() * 0.4)]);
+  }
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = corners[i], [x2, y2] = corners[(i + 1) % n];
+    const len = Math.hypot(x2 - x1, y2 - y1), nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+    const k = 5 + Math.floor(r() * 3);
+    for (let j = 0; j < k; j++) {
+      const t = j / k, off = j ? (r() - 0.5) * 0.07 : 0;
+      pts.push([x1 + (x2 - x1) * t + nx * off, y1 + (y2 - y1) * t + ny * off]);
+    }
+  }
+  return pts;
+}
+
+// A rough line (the stage's linocut strokes)
+function roughLine(r, pts, amp) {
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[i + 1];
+    for (let j = 0; j < 6; j++) {
+      const t = j / 6;
+      out.push([x1 + (x2 - x1) * t + (r() - 0.5) * amp, y1 + (y2 - y1) * t + (r() - 0.5) * amp]);
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+// Geometry: positions are kept in "stage units" (an ellipse filling the
+// canvas: 1 = its edge), so a resize keeps the collage
+const geo = () => {
+  const m = Math.min(width, height);
+  return { cx: width / 2, cy: height / 2, rx: width * 0.46, ry: height * 0.44, s: Math.max(22, m * 0.085) };
+};
+const toScreen = (nx, ny) => { const g = geo(); return [g.cx + nx * g.rx, g.cy + ny * g.ry]; };
+const toStage = (x, y) => { const g = geo(); return [(x - g.cx) / g.rx, (y - g.cy) / g.ry]; };
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+// The whole mix: full on the stage, silent at the edge
+const gainAt = (d) => 1 - smooth(0.3, 0.9, d);
+
+// Homes: evenly spaced along the ring as it appears on screen (equal arc
+// length, so a tall phone doesn't crowd its top and bottom)
+function layoutHomes() {
+  const g = geo(), n = shards.length, d = 0.8, N = 720;
+  const pts = [], acc = [0];
+  for (let k = 0; k <= N; k++) {
+    const a = (k / N) * Math.PI * 2 - Math.PI / 2;
+    pts.push(a);
+    if (k) {
+      const a0 = pts[k - 1];
+      acc.push(acc[k - 1] + Math.hypot((Math.cos(a) - Math.cos(a0)) * g.rx, (Math.sin(a) - Math.sin(a0)) * g.ry));
+    }
+  }
+  const total = acc[N];
+  shards.forEach((s, i) => {
+    const want = ((i + 0.5 + s.jit * 0.25) / n) * total;
+    let k = acc.findIndex((x) => x >= want);
+    if (k < 0) k = N;
+    const a = pts[k], dd = d + s.jitD;
+    s.home = [Math.cos(a) * dd, Math.sin(a) * dd];
+    if (s.atHome) s.pos = s.home.slice();
+  });
+}
+
+function makeShards() {
+  const r = rng(1902);
+  shards = eng.tracks.map((t) => {
+    const insts = ORDER.filter((x) => eng.piece(t.id, x));
+    const gouges = [];
+    for (let k = 0; k < 3; k++) {
+      const a = r() * Math.PI, x = (r() - 0.5) * 0.9, y = (r() - 0.5) * 0.9, l = 0.18 + r() * 0.2;
+      gouges.push([x, y, x + Math.cos(a) * l, y + Math.sin(a) * l]);
+    }
+    return {
+      track: t, insts, idx: -1, variant: 0, voice: null, since: 0, g: 0, lvl: 0,
+      shape: cutShape(r), rot: r() * Math.PI * 2, size: 0.88 + r() * 0.18, gouges,
+      jit: r() - 0.5, jitD: (r() - 0.5) * 0.06, atHome: true,
+      pos: [0, 0], home: [0, 0], target: null, pts: [], label: 0,
+    };
+  });
+  layoutHomes();
+}
+
+function makeStage() {
+  // The cover's tree-face, in stage units around the centre: a trunk,
+  // branches, roots, two eyes, the bowl
+  const r = rng(77);
+  const lines = [
+    [[0, 0.62], [0, -0.55]],
+    [[0, -0.42], [-0.12, -0.62]], [[0, -0.42], [0.12, -0.62]], [[0, -0.5], [-0.04, -0.68]], [[0, -0.5], [0.05, -0.7]],
+    [[0, 0.5], [-0.14, 0.66]], [[0, 0.5], [0.14, 0.66]], [[0, 0.56], [0, 0.72]],
+  ];
+  const bowl = [];
+  for (let i = 0; i <= 16; i++) { const a = Math.PI * (i / 16); bowl.push([Math.cos(a) * 0.34, 0.1 + Math.sin(a) * 0.2]); }
+  lines.push(bowl);
+  for (const ex of [-0.22, 0.22]) {
+    const eye = [];
+    for (let i = 0; i <= 12; i++) { const a = (i / 12) * Math.PI * 2; eye.push([ex + Math.cos(a) * 0.06, -0.14 + Math.sin(a) * 0.07]); }
+    lines.push(eye);
+    for (const k of [-1, 0, 1]) lines.push([[ex + k * 0.04, -0.22], [ex + k * 0.06, -0.29]]);
+  }
+  stagePaths = lines.map((l) => roughLine(r, l, 0.012));
+}
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(Math.min(2, window.devicePixelRatio || 1));
+  makeStage();
+  Pinkasol.engine().then((e) => {
+    eng = e;
+    window.eng = e;
+    makeShards();
+  }).catch((e) => console.error(e));
+  const el = document.querySelector('canvas');
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+}
+
+function windowResized() { resizeCanvas(windowWidth, windowHeight); if (shards.length) layoutHomes(); }
+
+// --- sound ------------------------------------------------------------------
+
+const sounding = () => shards.filter((s) => s.idx >= 0);
+const distOf = (s) => Math.hypot(s.pos[0], s.pos[1]);
+
+function pieceFor(s) {
+  return eng.piece(s.track.id, s.insts[s.idx], s.variant);
+}
+
+function start(s, toStageToo) {
+  const live = sounding();
+  if (live.length >= MAX_SOUNDING) {
+    const oldest = live.reduce((a, b) => (a.since <= b.since ? a : b));
+    silence(oldest, 1.2);
+  }
+  s.idx = 0;
+  s.since = millis();
+  s.atHome = false;
+  s.g = gainAt(distOf(s));
+  s.voice = eng.play(pieceFor(s), { gain: s.g });
+  s.label = millis() + 2000;
+  if (toStageToo) {
+    const a = Math.atan2(s.pos[1], s.pos[0]);
+    const d = 0.16 + Math.random() * 0.14;
+    s.target = [Math.cos(a) * d, Math.sin(a) * d];
+  }
+}
+
+function advance(s) {
+  s.idx += 1;
+  if (s.idx >= s.insts.length) { silence(s, 0.6); return; }
+  s.variant = Math.floor(Math.random() * 2);
+  const old = s.voice;
+  s.voice = eng.swap(old, pieceFor(s), { gain: s.g });
+  s.label = millis() + 2000;
+}
+
+function silence(s, fade) {
+  if (s.voice) s.voice.stop(fade);
+  s.voice = null;
+  s.idx = -1;
+  s.target = s.home.slice();
+}
+
+function click(s) {
+  if (s.idx < 0) start(s, true);
+  else advance(s);
+}
+
+// --- gestures ----------------------------------------------------------------
+
+function hit(x, y) {
+  for (let i = shards.length - 1; i >= 0; i--) {
+    const p = shards[i].pts;
+    let inside = false;
+    for (let a = 0, b = p.length - 1; a < p.length; b = a++) {
+      if ((p[a][1] > y) !== (p[b][1] > y) && x < ((p[b][0] - p[a][0]) * (y - p[a][1])) / (p[b][1] - p[a][1]) + p[a][0]) inside = !inside;
+    }
+    if (inside) return shards[i];
+  }
+  return null;
+}
+
+function local(e) {
+  const r = e.target.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+
+function down(e) {
+  lastInput = millis();
+  if (!eng) return;
+  if (!unlocked) { unlocked = true; eng.unlock(); }
+  const [x, y] = local(e);
+  const s = hit(x, y);
+  if (!s) return;
+  e.target.setPointerCapture(e.pointerId);
+  const [sx, sy] = toScreen(s.pos[0], s.pos[1]);
+  drag = { shard: s, id: e.pointerId, dx: sx - x, dy: sy - y, x0: x, y0: y, moved: false };
+  shards.splice(shards.indexOf(s), 1);
+  shards.push(s); // on top
+}
+
+function move(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  lastInput = millis();
+  const [x, y] = local(e);
+  if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) < 6) return;
+  drag.moved = true;
+  const s = drag.shard;
+  s.atHome = false;
+  s.target = null;
+  const [nx, ny] = toStage(x + drag.dx, y + drag.dy);
+  const d = Math.hypot(nx, ny), k = d > 1.05 ? 1.05 / d : 1;
+  s.pos = [nx * k, ny * k];
+}
+
+function up(e) {
+  if (!drag || e.pointerId !== drag.id) return;
+  lastInput = millis();
+  const s = drag.shard;
+  if (!drag.moved) click(s);
+  else {
+    const d = distOf(s);
+    if (s.idx < 0 && d < 0.6) start(s, false); // dropped on the stage: it plays
+    else if (s.idx >= 0 && d > 0.92) { silence(s, 0.5); s.target = null; } // dropped off: silence
+  }
+  drag = null;
+}
+
+// --- the listening mode ------------------------------------------------------
+
+function autoStep() {
+  const live = sounding();
+  const quiet = shards.filter((s) => s.idx < 0);
+  if ((Math.random() < 0.5 || live.length < 2) && quiet.length) {
+    start(quiet[Math.floor(Math.random() * quiet.length)], true);
+  } else if (live.length) {
+    const s = live[Math.floor(Math.random() * live.length)];
+    if (s.idx + 1 >= s.insts.length && live.length === 1) {
+      // the last one sounding never falls silent by itself: back to its first instrument
+      const old = s.voice;
+      s.idx = 0;
+      s.voice = eng.swap(old, pieceFor(s), { gain: s.g });
+      s.label = millis() + 2000;
+    } else advance(s);
+  }
+}
+
+// --- drawing -----------------------------------------------------------------
+
+function shardPoints(s, scale) {
+  const g = geo();
+  const [x, y] = toScreen(s.pos[0], s.pos[1]);
+  const r = g.s * s.size * scale, c = Math.cos(s.rot), sn = Math.sin(s.rot);
+  return s.shape.map(([px, py]) => [x + (px * c - py * sn) * r, y + (px * sn + py * c) * r]);
+}
+
+function pathOf(pts, dx = 0, dy = 0) {
+  const p = new Path2D();
+  pts.forEach(([x, y], i) => (i ? p.lineTo(x + dx, y + dy) : p.moveTo(x + dx, y + dy)));
+  p.closePath();
+  return p;
+}
+
+function glyph(ctx, inst, x, y, r) {
+  ctx.fillStyle = BLUE;
+  ctx.strokeStyle = BLUE;
+  ctx.lineWidth = Math.max(2, r * 0.22);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (inst === 'drums') { // a drum head
+    ctx.arc(x, y, r * 0.8, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, r * 0.22, 0, Math.PI * 2); ctx.fill();
+  } else if (inst === 'piano') { // keys
+    for (let i = 0; i < 4; i++) ctx.fillRect(x - r * 0.9 + i * r * 0.48, y - r * (i % 2 ? 0.55 : 0.85), r * 0.3, r * (i % 2 ? 1.1 : 1.7));
+  } else if (inst === 'synth') { // a wave
+    for (let i = 0; i <= 12; i++) { const t = i / 12; ctx.lineTo(x - r + t * 2 * r, y + Math.sin(t * Math.PI * 3) * r * 0.55); }
+    ctx.stroke();
+  } else if (inst === 'bass') { // the cover's half-moon
+    ctx.arc(x, y + r * 0.1, r * 0.85, Math.PI, 0); ctx.closePath(); ctx.fill();
+  }
+}
+
+function draw() {
+  const ctx = drawingContext;
+  const g = geo();
+  background(BLUE);
+  const ph = eng && eng.phase();
+  const pulse = ph ? Math.pow(1 - ph.beat, 3) * (ph.n === 0 ? 1 : 0.5) : 0;
+  const master = eng && unlocked ? eng.level() : 0;
+
+  // The stage: the cover's tree-face, faint, breathing with the mix
+  ctx.save();
+  ctx.translate(g.cx, g.cy);
+  const m = Math.min(g.rx, g.ry) * 0.78;
+  ctx.strokeStyle = `rgba(253,253,253,${0.16 + master * 0.22})`;
+  ctx.lineWidth = Math.max(2, m * 0.018);
+  ctx.lineJoin = ctx.lineCap = 'round';
+  for (const l of stagePaths) {
+    ctx.beginPath();
+    l.forEach(([x, y], i) => (i ? ctx.lineTo(x * m, y * m) : ctx.moveTo(x * m, y * m)));
+    ctx.stroke();
+  }
+  // the star (orange, the cover's only colour) beats on the bar
+  const sr = m * (0.05 + pulse * 0.025);
+  ctx.fillStyle = ORANGE;
+  ctx.beginPath();
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 - Math.PI / 2, rr = i % 2 ? sr * 0.38 : sr;
+    ctx.lineTo(Math.cos(a) * rr, -0.74 * m + Math.sin(a) * rr);
+  }
+  ctx.fill();
+  // the stage's rim: full volume inside
+  ctx.setLineDash([m * 0.02, m * 0.03]);
+  ctx.strokeStyle = `rgba(253,253,253,${0.12 + pulse * 0.15})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, g.rx * 0.32, g.ry * 0.32, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  if (!eng) { hint('…'); return; }
+
+  // Motion, levels, gains
+  const now = millis();
+  for (const s of shards) {
+    if (s.target && !(drag && drag.shard === s)) {
+      s.pos[0] += (s.target[0] - s.pos[0]) * 0.08;
+      s.pos[1] += (s.target[1] - s.pos[1]) * 0.08;
+      if (Math.hypot(s.target[0] - s.pos[0], s.target[1] - s.pos[1]) < 0.002) {
+        s.atHome = s.idx < 0 && s.target[0] === s.home[0] && s.target[1] === s.home[1];
+        s.target = null;
+      }
+    }
+    const v = s.voice;
+    s.lvl += ((v && v.playing ? v.level() : 0) - s.lvl) * 0.3;
+    if (v && v.playing) {
+      const gn = gainAt(distOf(s));
+      if (Math.abs(gn - s.g) > 0.015) { s.g = gn; v.setGain(gn, 0.12); }
+    }
+    const scale = s.idx >= 0 ? 1.05 + s.lvl * 0.18 + pulse * 0.05 : 1;
+    s.pts = shardPoints(s, scale);
+    s.path = pathOf(s.pts);
+  }
+
+  // Shadows: a sounding shard is lifted from the sheet
+  ctx.fillStyle = SHADE;
+  for (const s of shards) if (s.idx >= 0) ctx.fill(pathOf(s.pts, 5, 6));
+
+  // The shards
+  for (const s of shards) {
+    ctx.fillStyle = PAPER;
+    ctx.fill(s.path);
+    // the gouge marks of the cut (the cover's linocut)
+    const [x0, y0] = toScreen(s.pos[0], s.pos[1]);
+    const rr = g.s * s.size, c = Math.cos(s.rot), sn = Math.sin(s.rot);
+    ctx.strokeStyle = s.idx >= 0 ? 'rgba(23,69,150,0.25)' : 'rgba(23,69,150,0.55)';
+    ctx.lineWidth = Math.max(1.5, g.s * 0.05);
+    ctx.lineCap = 'round';
+    for (const [a1, b1, a2, b2] of s.gouges) {
+      ctx.beginPath();
+      ctx.moveTo(x0 + (a1 * c - b1 * sn) * rr, y0 + (a1 * sn + b1 * c) * rr);
+      ctx.lineTo(x0 + (a2 * c - b2 * sn) * rr, y0 + (a2 * sn + b2 * c) * rr);
+      ctx.stroke();
+    }
+    if (drag && drag.shard === s) { ctx.strokeStyle = ORANGE; ctx.lineWidth = 2; ctx.stroke(s.path); }
+  }
+
+  // Where two sounding shards overlap: the mix, cut in orange
+  const live = shards.filter((s) => s.idx >= 0 && s.g > 0.05);
+  for (let i = 0; i < live.length; i++) {
+    for (let j = i + 1; j < live.length; j++) {
+      ctx.save();
+      ctx.clip(live[i].path);
+      ctx.fillStyle = ORANGE;
+      ctx.globalAlpha = Math.min(live[i].g, live[j].g) * 0.7 + 0.3;
+      ctx.fill(live[j].path);
+      ctx.restore();
+    }
+  }
+
+  // Glyphs and labels
+  for (const s of shards) {
+    const [x, y] = toScreen(s.pos[0], s.pos[1]);
+    const r = g.s * 0.32;
+    if (s.idx >= 0) glyph(ctx, s.insts[s.idx], x, y, r * (1 + s.lvl * 0.25));
+    const hover = !drag && hit(mouseX, mouseY) === s;
+    if (now < s.label || hover || (drag && drag.shard === s)) {
+      const fade = hover || drag ? 1 : Math.min(1, (s.label - now) / 400);
+      const txt = (s.track.title + (s.idx >= 0 ? ' · ' + NAMES[s.insts[s.idx]] : '')).toUpperCase();
+      ctx.font = `800 ${Math.round(Math.max(12, g.s * 0.36))}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      const ty = y - g.s * s.size * 1.25;
+      const w = ctx.measureText(txt).width + 12;
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = BLUE;
+      ctx.fillRect(x - w / 2, ty - g.s * 0.46, w, g.s * 0.5);
+      ctx.fillStyle = PAPER;
+      ctx.fillText(txt, x, ty);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // The listening mode
+  autoOn = unlocked && now - lastInput > IDLE_MS && live.length > 0;
+  if (autoOn && now > nextAuto) {
+    if (nextAuto) autoStep();
+    const bar = eng.clock ? eng.clock.bar : 2;
+    nextAuto = now + bar * 4 * 1000;
+  }
+  if (!autoOn) nextAuto = 0;
+
+  if (!unlocked) hint('Cliquez, glissez — le son arrive au premier geste');
+  else if (autoOn) hint('écoute libre · un geste pour reprendre la main', 0.6);
+  else if (!sounding().length) hint('Cliquez une forme · glissez-la vers le centre', 0.75);
+}
+
+function hint(txt, alpha = 1) {
+  const ctx = drawingContext;
+  ctx.font = `800 ${Math.round(Math.max(13, Math.min(20, width / 34)))}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = `rgba(253,253,253,${alpha})`;
+  ctx.fillText(txt.toUpperCase(), width / 2, height - 14);
+}
+
+window.collage = {
+  get shards() { return shards; },
+  screen: (s) => toScreen(s.pos[0], s.pos[1]),
+  gainAt, geo,
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,1704 @@
+{
+ "palette": {
+  "blue": "#174596",
+  "paper": "#fdfdfd",
+  "orange": "#dc8d4e"
+ },
+ "tracks": [
+  {
+   "title": "Rototo",
+   "key": "Ab minor",
+   "meter": 4,
+   "tempo": 117.45,
+   "bar_seconds": 2.009,
+   "id": "01_Rototo",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "01_Rototo/drums-1.mp3",
+     "loop_end": 7.941,
+     "bars": 4,
+     "free": false,
+     "from": 146.82
+    },
+    {
+     "inst": "drums",
+     "file": "01_Rototo/drums-2.mp3",
+     "loop_end": 7.895,
+     "bars": 4,
+     "free": false,
+     "from": 154.761
+    },
+    {
+     "inst": "bass",
+     "file": "01_Rototo/bass-1.mp3",
+     "loop_end": 8.034,
+     "bars": 4,
+     "free": false,
+     "from": 59.397
+    },
+    {
+     "inst": "bass",
+     "file": "01_Rototo/bass-2.mp3",
+     "loop_end": 8.174,
+     "bars": 4,
+     "free": false,
+     "from": 3.111
+    },
+    {
+     "inst": "piano",
+     "file": "01_Rototo/piano-1.mp3",
+     "loop_end": 8.081,
+     "bars": 4,
+     "free": false,
+     "from": 15.348
+    },
+    {
+     "inst": "piano",
+     "file": "01_Rototo/piano-2.mp3",
+     "loop_end": 8.127,
+     "bars": 4,
+     "free": false,
+     "from": 7.221
+    },
+    {
+     "inst": "synth",
+     "file": "01_Rototo/synth-1.mp3",
+     "loop_end": 7.918,
+     "bars": 4,
+     "free": false,
+     "from": 174.614
+    },
+    {
+     "inst": "synth",
+     "file": "01_Rototo/synth-2.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 184.529
+    }
+   ],
+   "parts": [
+    {
+     "start": 3.146,
+     "end": 19.383,
+     "bars": 8,
+     "loop_end": 16.237,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "01_Rototo/p1-drums.mp3",
+      "bass": "01_Rototo/p1-bass.mp3",
+      "piano": "01_Rototo/p1-piano.mp3",
+      "synth": "01_Rototo/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 59.391,
+     "end": 75.442,
+     "bars": 8,
+     "loop_end": 16.051,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": true,
+     "files": {
+      "drums": "01_Rototo/p2-drums.mp3",
+      "bass": "01_Rototo/p2-bass.mp3",
+      "piano": "01_Rototo/p2-piano.mp3",
+      "synth": "01_Rototo/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 119.055,
+     "end": 126.99,
+     "bars": 4,
+     "loop_end": 7.935,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "01_Rototo/p3-drums.mp3",
+      "bass": "01_Rototo/p3-bass.mp3",
+      "piano": "01_Rototo/p3-piano.mp3",
+      "synth": "01_Rototo/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 137.009,
+     "end": 152.625,
+     "bars": 8,
+     "loop_end": 15.616,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "01_Rototo/p4-drums.mp3",
+      "bass": "01_Rototo/p4-bass.mp3",
+      "piano": "01_Rototo/p4-piano.mp3",
+      "synth": "01_Rototo/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 170.58,
+     "end": 178.631,
+     "bars": 4,
+     "loop_end": 8.051,
+     "playing": [
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "01_Rototo/p5-drums.mp3",
+      "bass": "01_Rototo/p5-bass.mp3",
+      "piano": "01_Rototo/p5-piano.mp3",
+      "synth": "01_Rototo/p5-synth.mp3"
+     }
+    },
+    {
+     "start": 178.631,
+     "end": 194.519,
+     "bars": 8,
+     "loop_end": 15.888,
+     "playing": [
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "01_Rototo/p6-drums.mp3",
+      "bass": "01_Rototo/p6-bass.mp3",
+      "piano": "01_Rototo/p6-piano.mp3",
+      "synth": "01_Rototo/p6-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Arroyoyo",
+   "key": "F minor",
+   "meter": 4,
+   "tempo": 136.0,
+   "bar_seconds": 1.765,
+   "id": "02_Arroyoyo",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "02_Arroyoyo/drums-1.mp3",
+     "loop_end": 6.827,
+     "bars": 4,
+     "free": false,
+     "from": 4.551
+    },
+    {
+     "inst": "drums",
+     "file": "02_Arroyoyo/drums-2.mp3",
+     "loop_end": 6.803,
+     "bars": 4,
+     "free": false,
+     "from": 30.372
+    },
+    {
+     "inst": "bass",
+     "file": "02_Arroyoyo/bass-1.mp3",
+     "loop_end": 6.827,
+     "bars": 4,
+     "free": false,
+     "from": 4.551
+    },
+    {
+     "inst": "bass",
+     "file": "02_Arroyoyo/bass-2.mp3",
+     "loop_end": 6.85,
+     "bars": 4,
+     "free": false,
+     "from": 42.609
+    },
+    {
+     "inst": "piano",
+     "file": "02_Arroyoyo/piano-1.mp3",
+     "loop_end": 7.222,
+     "bars": 4,
+     "free": false,
+     "from": 128.313
+    },
+    {
+     "inst": "piano",
+     "file": "02_Arroyoyo/piano-2.mp3",
+     "loop_end": 7.43,
+     "bars": 4,
+     "free": false,
+     "from": 108.182
+    },
+    {
+     "inst": "synth",
+     "file": "02_Arroyoyo/synth-1.mp3",
+     "loop_end": 7.175,
+     "bars": 4,
+     "free": false,
+     "from": 151.394
+    },
+    {
+     "inst": "synth",
+     "file": "02_Arroyoyo/synth-2.mp3",
+     "loop_end": 7.059,
+     "bars": 4,
+     "free": false,
+     "from": 199.227
+    }
+   ],
+   "parts": [
+    {
+     "start": 30.378,
+     "end": 37.158,
+     "bars": 4,
+     "loop_end": 6.78,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": true,
+     "files": {
+      "drums": "02_Arroyoyo/p1-drums.mp3",
+      "bass": "02_Arroyoyo/p1-bass.mp3",
+      "piano": "02_Arroyoyo/p1-piano.mp3",
+      "synth": "02_Arroyoyo/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 42.603,
+     "end": 49.424,
+     "bars": 4,
+     "loop_end": 6.821,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "02_Arroyoyo/p2-drums.mp3",
+      "bass": "02_Arroyoyo/p2-bass.mp3",
+      "piano": "02_Arroyoyo/p2-piano.mp3",
+      "synth": "02_Arroyoyo/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 102.725,
+     "end": 117.447,
+     "bars": 8,
+     "loop_end": 14.722,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "02_Arroyoyo/p3-drums.mp3",
+      "bass": "02_Arroyoyo/p3-bass.mp3",
+      "piano": "02_Arroyoyo/p3-piano.mp3",
+      "synth": "02_Arroyoyo/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 158.563,
+     "end": 165.523,
+     "bars": 4,
+     "loop_end": 6.96,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "02_Arroyoyo/p4-drums.mp3",
+      "bass": "02_Arroyoyo/p4-bass.mp3",
+      "piano": "02_Arroyoyo/p4-piano.mp3",
+      "synth": "02_Arroyoyo/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 168.943,
+     "end": 175.972,
+     "bars": 4,
+     "loop_end": 7.029,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "02_Arroyoyo/p5-drums.mp3",
+      "bass": "02_Arroyoyo/p5-bass.mp3",
+      "piano": "02_Arroyoyo/p5-piano.mp3",
+      "synth": "02_Arroyoyo/p5-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Clarita",
+   "key": "G major",
+   "meter": 4,
+   "tempo": 123.05,
+   "bar_seconds": 1.997,
+   "id": "03_Clarita",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "03_Clarita/drums-1.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 218.291
+    },
+    {
+     "inst": "drums",
+     "file": "03_Clarita/drums-2.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 226.302
+    },
+    {
+     "inst": "piano",
+     "file": "03_Clarita/piano-1.mp3",
+     "loop_end": 8.034,
+     "bars": 4,
+     "free": false,
+     "from": 85.542
+    },
+    {
+     "inst": "piano",
+     "file": "03_Clarita/piano-2.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 4.017
+    },
+    {
+     "inst": "synth",
+     "file": "03_Clarita/synth-1.mp3",
+     "loop_end": 7.987,
+     "bars": 4,
+     "free": false,
+     "from": 160.543
+    },
+    {
+     "inst": "synth",
+     "file": "03_Clarita/synth-2.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 186.572
+    }
+   ],
+   "parts": [
+    {
+     "start": 0.07,
+     "end": 16.028,
+     "bars": 8,
+     "loop_end": 15.958,
+     "playing": [
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "03_Clarita/p1-drums.mp3",
+      "piano": "03_Clarita/p1-piano.mp3",
+      "synth": "03_Clarita/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 50.022,
+     "end": 65.927,
+     "bars": 8,
+     "loop_end": 15.905,
+     "playing": [
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "03_Clarita/p2-drums.mp3",
+      "piano": "03_Clarita/p2-piano.mp3",
+      "synth": "03_Clarita/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 111.026,
+     "end": 119.066,
+     "bars": 4,
+     "loop_end": 8.04,
+     "playing": [
+      "drums"
+     ],
+     "all": false,
+     "files": {
+      "drums": "03_Clarita/p3-drums.mp3",
+      "piano": "03_Clarita/p3-piano.mp3",
+      "synth": "03_Clarita/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 158.54,
+     "end": 174.556,
+     "bars": 8,
+     "loop_end": 16.016,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "03_Clarita/p4-drums.mp3",
+      "piano": "03_Clarita/p4-piano.mp3",
+      "synth": "03_Clarita/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 174.556,
+     "end": 190.578,
+     "bars": 8,
+     "loop_end": 16.022,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "03_Clarita/p5-drums.mp3",
+      "piano": "03_Clarita/p5-piano.mp3",
+      "synth": "03_Clarita/p5-synth.mp3"
+     }
+    },
+    {
+     "start": 214.291,
+     "end": 230.29,
+     "bars": 8,
+     "loop_end": 15.999,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "03_Clarita/p6-drums.mp3",
+      "piano": "03_Clarita/p6-piano.mp3",
+      "synth": "03_Clarita/p6-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Noisette",
+   "key": "F minor",
+   "meter": 4,
+   "tempo": 95.7,
+   "bar_seconds": 2.461,
+   "id": "04_Noisette",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "04_Noisette/drums-1.mp3",
+     "loop_end": 9.938,
+     "bars": 4,
+     "free": false,
+     "from": 207.61
+    },
+    {
+     "inst": "drums",
+     "file": "04_Noisette/drums-2.mp3",
+     "loop_end": 9.939,
+     "bars": 4,
+     "free": false,
+     "from": 197.671
+    },
+    {
+     "inst": "bass",
+     "file": "04_Noisette/bass-1.mp3",
+     "loop_end": 9.822,
+     "bars": 4,
+     "free": false,
+     "from": 42.632
+    },
+    {
+     "inst": "bass",
+     "file": "04_Noisette/bass-2.mp3",
+     "loop_end": 9.799,
+     "bars": 4,
+     "free": false,
+     "from": 8.313
+    },
+    {
+     "inst": "piano",
+     "file": "04_Noisette/piano-1.mp3",
+     "loop_end": 9.822,
+     "bars": 4,
+     "free": false,
+     "from": 180.396
+    },
+    {
+     "inst": "piano",
+     "file": "04_Noisette/piano-2.mp3",
+     "loop_end": 9.822,
+     "bars": 4,
+     "free": false,
+     "from": 143.592
+    },
+    {
+     "inst": "synth",
+     "file": "04_Noisette/synth-1.mp3",
+     "loop_end": 9.845,
+     "bars": 4,
+     "free": false,
+     "from": 170.551
+    },
+    {
+     "inst": "synth",
+     "file": "04_Noisette/synth-2.mp3",
+     "loop_end": 9.939,
+     "bars": 4,
+     "free": false,
+     "from": 192.702
+    }
+   ],
+   "parts": [
+    {
+     "start": 15.673,
+     "end": 35.265,
+     "bars": 8,
+     "loop_end": 19.592,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": true,
+     "files": {
+      "drums": "04_Noisette/p1-drums.mp3",
+      "bass": "04_Noisette/p1-bass.mp3",
+      "piano": "04_Noisette/p1-piano.mp3",
+      "synth": "04_Noisette/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 40.171,
+     "end": 59.751,
+     "bars": 8,
+     "loop_end": 19.58,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "04_Noisette/p2-drums.mp3",
+      "bass": "04_Noisette/p2-bass.mp3",
+      "piano": "04_Noisette/p2-piano.mp3",
+      "synth": "04_Noisette/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 94.018,
+     "end": 113.598,
+     "bars": 8,
+     "loop_end": 19.58,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "04_Noisette/p3-drums.mp3",
+      "bass": "04_Noisette/p3-bass.mp3",
+      "piano": "04_Noisette/p3-piano.mp3",
+      "synth": "04_Noisette/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 125.98,
+     "end": 146.042,
+     "bars": 8,
+     "loop_end": 20.062,
+     "playing": [
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "04_Noisette/p4-drums.mp3",
+      "bass": "04_Noisette/p4-bass.mp3",
+      "piano": "04_Noisette/p4-piano.mp3",
+      "synth": "04_Noisette/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 190.2,
+     "end": 210.123,
+     "bars": 8,
+     "loop_end": 19.923,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "04_Noisette/p5-drums.mp3",
+      "bass": "04_Noisette/p5-bass.mp3",
+      "piano": "04_Noisette/p5-piano.mp3",
+      "synth": "04_Noisette/p5-synth.mp3"
+     }
+    },
+    {
+     "start": 225.025,
+     "end": 234.951,
+     "bars": 4,
+     "loop_end": 9.926,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "04_Noisette/p6-drums.mp3",
+      "bass": "04_Noisette/p6-bass.mp3",
+      "piano": "04_Noisette/p6-piano.mp3",
+      "synth": "04_Noisette/p6-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Malavista",
+   "key": "F minor",
+   "meter": 13,
+   "tempo": 234.91,
+   "bar_seconds": 3.413,
+   "id": "05_Malavista",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "05_Malavista/drums-1.mp3",
+     "loop_end": 6.85,
+     "bars": 2,
+     "free": false,
+     "from": 51.293
+    },
+    {
+     "inst": "drums",
+     "file": "05_Malavista/drums-2.mp3",
+     "loop_end": 6.873,
+     "bars": 2,
+     "free": false,
+     "from": 13.677
+    },
+    {
+     "inst": "bass",
+     "file": "05_Malavista/bass-1.mp3",
+     "loop_end": 6.827,
+     "bars": 2,
+     "free": false,
+     "from": 65.016
+    },
+    {
+     "inst": "bass",
+     "file": "05_Malavista/bass-2.mp3",
+     "loop_end": 6.873,
+     "bars": 2,
+     "free": false,
+     "from": 71.843
+    },
+    {
+     "inst": "piano",
+     "file": "05_Malavista/piano-1.mp3",
+     "loop_end": 6.78,
+     "bars": 2,
+     "free": false,
+     "from": 95.806
+    },
+    {
+     "inst": "piano",
+     "file": "05_Malavista/piano-2.mp3",
+     "loop_end": 6.827,
+     "bars": 2,
+     "free": false,
+     "from": 126.618
+    },
+    {
+     "inst": "synth",
+     "file": "05_Malavista/synth-1.mp3",
+     "loop_end": 6.85,
+     "bars": 2,
+     "free": false,
+     "from": 116.332
+    },
+    {
+     "inst": "synth",
+     "file": "05_Malavista/synth-2.mp3",
+     "loop_end": 6.827,
+     "bars": 2,
+     "free": false,
+     "from": 126.618
+    }
+   ],
+   "parts": [
+    {
+     "start": 6.827,
+     "end": 20.503,
+     "bars": 4,
+     "loop_end": 13.676,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "05_Malavista/p1-drums.mp3",
+      "bass": "05_Malavista/p1-bass.mp3",
+      "piano": "05_Malavista/p1-piano.mp3",
+      "synth": "05_Malavista/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 44.426,
+     "end": 58.137,
+     "bars": 4,
+     "loop_end": 13.711,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "05_Malavista/p2-drums.mp3",
+      "bass": "05_Malavista/p2-bass.mp3",
+      "piano": "05_Malavista/p2-piano.mp3",
+      "synth": "05_Malavista/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 106.046,
+     "end": 119.74,
+     "bars": 4,
+     "loop_end": 13.694,
+     "playing": [
+      "drums",
+      "bass",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "05_Malavista/p3-drums.mp3",
+      "bass": "05_Malavista/p3-bass.mp3",
+      "piano": "05_Malavista/p3-piano.mp3",
+      "synth": "05_Malavista/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 123.164,
+     "end": 136.829,
+     "bars": 4,
+     "loop_end": 13.665,
+     "playing": [
+      "drums",
+      "bass",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "05_Malavista/p4-drums.mp3",
+      "bass": "05_Malavista/p4-bass.mp3",
+      "piano": "05_Malavista/p4-piano.mp3",
+      "synth": "05_Malavista/p4-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Exit B",
+   "key": "C minor",
+   "meter": 4,
+   "tempo": 127.0,
+   "bar_seconds": 1.881,
+   "id": "06_Exit_B",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "06_Exit_B/drums-1.mp3",
+     "loop_end": 7.569,
+     "bars": 4,
+     "free": false,
+     "from": 173.811
+    },
+    {
+     "inst": "drums",
+     "file": "06_Exit_B/drums-2.mp3",
+     "loop_end": 7.64,
+     "bars": 4,
+     "free": false,
+     "from": 190.9
+    },
+    {
+     "inst": "piano",
+     "file": "06_Exit_B/piano-1.mp3",
+     "loop_end": 7.547,
+     "bars": 4,
+     "free": false,
+     "from": 209.987
+    },
+    {
+     "inst": "piano",
+     "file": "06_Exit_B/piano-2.mp3",
+     "loop_end": 7.315,
+     "bars": 4,
+     "free": false,
+     "from": 101.387
+    },
+    {
+     "inst": "piano",
+     "file": "06_Exit_B/piano-3.mp3",
+     "loop_end": 9.796,
+     "bars": null,
+     "free": true,
+     "from": 0.0
+    },
+    {
+     "inst": "synth",
+     "file": "06_Exit_B/synth-1.mp3",
+     "loop_end": 7.43,
+     "bars": 4,
+     "free": false,
+     "from": 217.534
+    },
+    {
+     "inst": "synth",
+     "file": "06_Exit_B/synth-2.mp3",
+     "loop_end": 7.593,
+     "bars": 4,
+     "free": false,
+     "from": 160.668
+    }
+   ],
+   "parts": [
+    {
+     "start": 23.824,
+     "end": 39.068,
+     "bars": 8,
+     "loop_end": 15.244,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "06_Exit_B/p1-drums.mp3",
+      "piano": "06_Exit_B/p1-piano.mp3",
+      "synth": "06_Exit_B/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 84.573,
+     "end": 99.55,
+     "bars": 8,
+     "loop_end": 14.977,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "06_Exit_B/p2-drums.mp3",
+      "piano": "06_Exit_B/p2-piano.mp3",
+      "synth": "06_Exit_B/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 138.443,
+     "end": 153.199,
+     "bars": 8,
+     "loop_end": 14.756,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "06_Exit_B/p3-drums.mp3",
+      "piano": "06_Exit_B/p3-piano.mp3",
+      "synth": "06_Exit_B/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 171.961,
+     "end": 187.176,
+     "bars": 8,
+     "loop_end": 15.215,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "06_Exit_B/p4-drums.mp3",
+      "piano": "06_Exit_B/p4-piano.mp3",
+      "synth": "06_Exit_B/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 187.176,
+     "end": 202.437,
+     "bars": 8,
+     "loop_end": 15.261,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "06_Exit_B/p5-drums.mp3",
+      "piano": "06_Exit_B/p5-piano.mp3",
+      "synth": "06_Exit_B/p5-synth.mp3"
+     }
+    },
+    {
+     "start": 226.83,
+     "end": 234.504,
+     "bars": 4,
+     "loop_end": 7.674,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "06_Exit_B/p6-drums.mp3",
+      "piano": "06_Exit_B/p6-piano.mp3",
+      "synth": "06_Exit_B/p6-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Asperges",
+   "key": "D major",
+   "meter": 4,
+   "tempo": 117.45,
+   "bar_seconds": 1.997,
+   "id": "07_Asperges",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "07_Asperges/drums-1.mp3",
+     "loop_end": 7.965,
+     "bars": 4,
+     "free": false,
+     "from": 114.567
+    },
+    {
+     "inst": "drums",
+     "file": "07_Asperges/drums-2.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 102.586
+    },
+    {
+     "inst": "bass",
+     "file": "07_Asperges/bass-1.mp3",
+     "loop_end": 7.988,
+     "bars": 4,
+     "free": false,
+     "from": 18.065
+    },
+    {
+     "inst": "bass",
+     "file": "07_Asperges/bass-2.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 8.057
+    },
+    {
+     "inst": "piano",
+     "file": "07_Asperges/piano-1.mp3",
+     "loop_end": 7.988,
+     "bars": 4,
+     "free": false,
+     "from": 261.317
+    },
+    {
+     "inst": "piano",
+     "file": "07_Asperges/piano-2.mp3",
+     "loop_end": 8.266,
+     "bars": 4,
+     "free": false,
+     "from": 150.814
+    },
+    {
+     "inst": "synth",
+     "file": "07_Asperges/synth-1.mp3",
+     "loop_end": 7.987,
+     "bars": 4,
+     "free": false,
+     "from": 171.085
+    },
+    {
+     "inst": "synth",
+     "file": "07_Asperges/synth-2.mp3",
+     "loop_end": 7.964,
+     "bars": 4,
+     "free": false,
+     "from": 161.077
+    }
+   ],
+   "parts": [
+    {
+     "start": 8.052,
+     "end": 24.056,
+     "bars": 8,
+     "loop_end": 16.004,
+     "playing": [
+      "bass",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "07_Asperges/p1-drums.mp3",
+      "bass": "07_Asperges/p1-bass.mp3",
+      "piano": "07_Asperges/p1-piano.mp3",
+      "synth": "07_Asperges/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 76.539,
+     "end": 92.52,
+     "bars": 8,
+     "loop_end": 15.981,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "07_Asperges/p2-drums.mp3",
+      "bass": "07_Asperges/p2-bass.mp3",
+      "piano": "07_Asperges/p2-piano.mp3",
+      "synth": "07_Asperges/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 98.58,
+     "end": 114.55,
+     "bars": 8,
+     "loop_end": 15.97,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "07_Asperges/p3-drums.mp3",
+      "bass": "07_Asperges/p3-bass.mp3",
+      "piano": "07_Asperges/p3-piano.mp3",
+      "synth": "07_Asperges/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 161.054,
+     "end": 177.058,
+     "bars": 8,
+     "loop_end": 16.004,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "07_Asperges/p4-drums.mp3",
+      "bass": "07_Asperges/p4-bass.mp3",
+      "piano": "07_Asperges/p4-piano.mp3",
+      "synth": "07_Asperges/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 211.058,
+     "end": 227.045,
+     "bars": 8,
+     "loop_end": 15.987,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "07_Asperges/p5-drums.mp3",
+      "bass": "07_Asperges/p5-bass.mp3",
+      "piano": "07_Asperges/p5-piano.mp3",
+      "synth": "07_Asperges/p5-synth.mp3"
+     }
+    },
+    {
+     "start": 239.055,
+     "end": 255.036,
+     "bars": 8,
+     "loop_end": 15.981,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "07_Asperges/p6-drums.mp3",
+      "bass": "07_Asperges/p6-bass.mp3",
+      "piano": "07_Asperges/p6-piano.mp3",
+      "synth": "07_Asperges/p6-synth.mp3"
+     }
+    },
+    {
+     "start": 257.138,
+     "end": 273.293,
+     "bars": 8,
+     "loop_end": 16.155,
+     "playing": [
+      "bass",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "07_Asperges/p7-drums.mp3",
+      "bass": "07_Asperges/p7-bass.mp3",
+      "piano": "07_Asperges/p7-piano.mp3",
+      "synth": "07_Asperges/p7-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Pinkasol",
+   "key": "G minor",
+   "meter": 4,
+   "tempo": 123.05,
+   "bar_seconds": 1.974,
+   "id": "08_Pinkasol",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "08_Pinkasol/drums-1.mp3",
+     "loop_end": 8.011,
+     "bars": 4,
+     "free": false,
+     "from": 146.727
+    },
+    {
+     "inst": "drums",
+     "file": "08_Pinkasol/drums-2.mp3",
+     "loop_end": 7.987,
+     "bars": 4,
+     "free": false,
+     "from": 54.033
+    },
+    {
+     "inst": "bass",
+     "file": "08_Pinkasol/bass-1.mp3",
+     "loop_end": 7.965,
+     "bars": 4,
+     "free": false,
+     "from": 50.062
+    },
+    {
+     "inst": "bass",
+     "file": "08_Pinkasol/bass-2.mp3",
+     "loop_end": 8.034,
+     "bars": 4,
+     "free": false,
+     "from": 88.004
+    },
+    {
+     "inst": "piano",
+     "file": "08_Pinkasol/piano-1.mp3",
+     "loop_end": 7.755,
+     "bars": 4,
+     "free": false,
+     "from": 154.738
+    },
+    {
+     "inst": "piano",
+     "file": "08_Pinkasol/piano-2.mp3",
+     "loop_end": 7.826,
+     "bars": 4,
+     "free": false,
+     "from": 114.056
+    },
+    {
+     "inst": "synth",
+     "file": "08_Pinkasol/synth-1.mp3",
+     "loop_end": 7.592,
+     "bars": 4,
+     "free": false,
+     "from": 183.322
+    },
+    {
+     "inst": "synth",
+     "file": "08_Pinkasol/synth-2.mp3",
+     "loop_end": 7.709,
+     "bars": 4,
+     "free": false,
+     "from": 214.901
+    }
+   ],
+   "parts": [
+    {
+     "start": 28.026,
+     "end": 36.026,
+     "bars": 4,
+     "loop_end": 8.0,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "08_Pinkasol/p1-drums.mp3",
+      "bass": "08_Pinkasol/p1-bass.mp3",
+      "piano": "08_Pinkasol/p1-piano.mp3",
+      "synth": "08_Pinkasol/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 56.018,
+     "end": 71.999,
+     "bars": 8,
+     "loop_end": 15.981,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": true,
+     "files": {
+      "drums": "08_Pinkasol/p2-drums.mp3",
+      "bass": "08_Pinkasol/p2-bass.mp3",
+      "piano": "08_Pinkasol/p2-piano.mp3",
+      "synth": "08_Pinkasol/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 94.012,
+     "end": 110.005,
+     "bars": 8,
+     "loop_end": 15.993,
+     "playing": [
+      "drums",
+      "bass",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "08_Pinkasol/p3-drums.mp3",
+      "bass": "08_Pinkasol/p3-bass.mp3",
+      "piano": "08_Pinkasol/p3-piano.mp3",
+      "synth": "08_Pinkasol/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 179.554,
+     "end": 194.647,
+     "bars": 8,
+     "loop_end": 15.093,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "08_Pinkasol/p4-drums.mp3",
+      "bass": "08_Pinkasol/p4-bass.mp3",
+      "piano": "08_Pinkasol/p4-piano.mp3",
+      "synth": "08_Pinkasol/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 200.214,
+     "end": 214.86,
+     "bars": 8,
+     "loop_end": 14.646,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "08_Pinkasol/p5-drums.mp3",
+      "bass": "08_Pinkasol/p5-bass.mp3",
+      "piano": "08_Pinkasol/p5-piano.mp3",
+      "synth": "08_Pinkasol/p5-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "Cosmos",
+   "key": "Bb minor",
+   "meter": 4,
+   "tempo": 99.38,
+   "bar_seconds": 2.438,
+   "id": "09_Cosmos",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "09_Cosmos/drums-1.mp3",
+     "loop_end": 9.822,
+     "bars": 4,
+     "free": false,
+     "from": 243.717
+    },
+    {
+     "inst": "drums",
+     "file": "09_Cosmos/drums-2.mp3",
+     "loop_end": 9.799,
+     "bars": 4,
+     "free": false,
+     "from": 268.214
+    },
+    {
+     "inst": "piano",
+     "file": "09_Cosmos/piano-1.mp3",
+     "loop_end": 9.799,
+     "bars": 4,
+     "free": false,
+     "from": 2.322
+    },
+    {
+     "inst": "piano",
+     "file": "09_Cosmos/piano-2.mp3",
+     "loop_end": 9.799,
+     "bars": 4,
+     "free": false,
+     "from": 12.121
+    },
+    {
+     "inst": "synth",
+     "file": "09_Cosmos/synth-1.mp3",
+     "loop_end": 9.822,
+     "bars": 4,
+     "free": false,
+     "from": 185.272
+    },
+    {
+     "inst": "synth",
+     "file": "09_Cosmos/synth-2.mp3",
+     "loop_end": 9.683,
+     "bars": 4,
+     "free": false,
+     "from": 153.693
+    }
+   ],
+   "parts": [
+    {
+     "start": 31.695,
+     "end": 51.281,
+     "bars": 8,
+     "loop_end": 19.586,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "09_Cosmos/p1-drums.mp3",
+      "piano": "09_Cosmos/p1-piano.mp3",
+      "synth": "09_Cosmos/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 51.281,
+     "end": 61.022,
+     "bars": 4,
+     "loop_end": 9.741,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "09_Cosmos/p2-drums.mp3",
+      "piano": "09_Cosmos/p2-piano.mp3",
+      "synth": "09_Cosmos/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 129.149,
+     "end": 148.747,
+     "bars": 8,
+     "loop_end": 19.598,
+     "playing": [
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "09_Cosmos/p3-drums.mp3",
+      "piano": "09_Cosmos/p3-piano.mp3",
+      "synth": "09_Cosmos/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 185.272,
+     "end": 204.521,
+     "bars": 8,
+     "loop_end": 19.249,
+     "playing": [
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "09_Cosmos/p4-drums.mp3",
+      "piano": "09_Cosmos/p4-piano.mp3",
+      "synth": "09_Cosmos/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 211.859,
+     "end": 231.468,
+     "bars": 8,
+     "loop_end": 19.609,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "09_Cosmos/p5-drums.mp3",
+      "piano": "09_Cosmos/p5-piano.mp3",
+      "synth": "09_Cosmos/p5-synth.mp3"
+     }
+    },
+    {
+     "start": 246.12,
+     "end": 265.77,
+     "bars": 8,
+     "loop_end": 19.65,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "09_Cosmos/p6-drums.mp3",
+      "piano": "09_Cosmos/p6-piano.mp3",
+      "synth": "09_Cosmos/p6-synth.mp3"
+     }
+    }
+   ]
+  },
+  {
+   "title": "El Tigre",
+   "key": "G major",
+   "meter": 4,
+   "tempo": 136.0,
+   "bar_seconds": 1.788,
+   "id": "10_El_Tigre",
+   "pieces": [
+    {
+     "inst": "drums",
+     "file": "10_El_Tigre/drums-1.mp3",
+     "loop_end": 7.082,
+     "bars": 4,
+     "free": false,
+     "from": 164.212
+    },
+    {
+     "inst": "drums",
+     "file": "10_El_Tigre/drums-2.mp3",
+     "loop_end": 7.082,
+     "bars": 4,
+     "free": false,
+     "from": 185.481
+    },
+    {
+     "inst": "piano",
+     "file": "10_El_Tigre/piano-1.mp3",
+     "loop_end": 7.267,
+     "bars": 4,
+     "free": false,
+     "from": 88.84
+    },
+    {
+     "inst": "piano",
+     "file": "10_El_Tigre/piano-2.mp3",
+     "loop_end": 7.082,
+     "bars": 4,
+     "free": false,
+     "from": 373.841
+    },
+    {
+     "inst": "synth",
+     "file": "10_El_Tigre/synth-1.mp3",
+     "loop_end": 7.082,
+     "bars": 4,
+     "free": false,
+     "from": 476.288
+    },
+    {
+     "inst": "synth",
+     "file": "10_El_Tigre/synth-2.mp3",
+     "loop_end": 7.036,
+     "bars": 4,
+     "free": false,
+     "from": 407.603
+    }
+   ],
+   "parts": [
+    {
+     "start": 31.956,
+     "end": 46.829,
+     "bars": 8,
+     "loop_end": 14.873,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "10_El_Tigre/p1-drums.mp3",
+      "piano": "10_El_Tigre/p1-piano.mp3",
+      "synth": "10_El_Tigre/p1-synth.mp3"
+     }
+    },
+    {
+     "start": 81.496,
+     "end": 96.073,
+     "bars": 8,
+     "loop_end": 14.577,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "10_El_Tigre/p2-drums.mp3",
+      "piano": "10_El_Tigre/p2-piano.mp3",
+      "synth": "10_El_Tigre/p2-synth.mp3"
+     }
+    },
+    {
+     "start": 208.324,
+     "end": 222.958,
+     "bars": 8,
+     "loop_end": 14.634,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": true,
+     "files": {
+      "drums": "10_El_Tigre/p3-drums.mp3",
+      "piano": "10_El_Tigre/p3-piano.mp3",
+      "synth": "10_El_Tigre/p3-synth.mp3"
+     }
+    },
+    {
+     "start": 232.13,
+     "end": 246.787,
+     "bars": 8,
+     "loop_end": 14.657,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "10_El_Tigre/p4-drums.mp3",
+      "piano": "10_El_Tigre/p4-piano.mp3",
+      "synth": "10_El_Tigre/p4-synth.mp3"
+     }
+    },
+    {
+     "start": 347.58,
+     "end": 361.744,
+     "bars": 8,
+     "loop_end": 14.164,
+     "playing": [
+      "drums",
+      "piano"
+     ],
+     "all": false,
+     "files": {
+      "drums": "10_El_Tigre/p5-drums.mp3",
+      "piano": "10_El_Tigre/p5-piano.mp3",
+      "synth": "10_El_Tigre/p5-synth.mp3"
+     }
+    },
+    {
+     "start": 382.682,
+     "end": 396.794,
+     "bars": 8,
+     "loop_end": 14.112,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "10_El_Tigre/p6-drums.mp3",
+      "piano": "10_El_Tigre/p6-piano.mp3",
+      "synth": "10_El_Tigre/p6-synth.mp3"
+     }
+    },
+    {
+     "start": 427.137,
+     "end": 441.249,
+     "bars": 8,
+     "loop_end": 14.112,
+     "playing": [
+      "drums",
+      "piano",
+      "synth"
+     ],
+     "all": false,
+     "files": {
+      "drums": "10_El_Tigre/p7-drums.mp3",
+      "piano": "10_El_Tigre/p7-piano.mp3",
+      "synth": "10_El_Tigre/p7-synth.mp3"
+     }
+    }
+   ]
+  }
+ ]
+}

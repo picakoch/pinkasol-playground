@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le ciel de Pinkasol</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #174596; overflow: hidden; }
+  canvas { display: block; touch-action: none; }
+  a.back { position: fixed; top: 8px; left: 10px; z-index: 2; color: #fdfdfd; text-decoration: none; opacity: .85;
+    font: 700 13px/1 "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+  a.back:hover { opacity: 1; }
+</style>
+<script src="/lib/p5.min.js"></script>
+<script src="/lib/pinkasol-engine.js"></script>
+</head>
+<body>
+<a class="back" href="/">← Pinkasol</a>
+<script>
+// Le ciel de Pinkasol: the ten tracks are planets. Click one: it wakes, its
+// instruments come out as moons and you hear the track. Click a moon: it
+// goes quiet (again: it comes back). Drag a moon onto another planet: the
+// instrument travels there and plays over that track, if their keys agree;
+// otherwise it bounces home. Only clicks and drags.
+'use strict';
+
+const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e';
+const FONT = '"Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif';
+const NAMES = { drums: 'batterie', piano: 'piano', synth: 'synthé', bass: 'basse' };
+const ORDER = ['drums', 'bass', 'piano', 'synth'];
+const T2 = Math.PI * 2;
+// Positions (0..1) for a wide and a tall frame; sizes and motifs per track
+const WIDE = [[.10, .27], [.29, .15], [.47, .35], [.67, .16], [.88, .29], [.85, .68], [.64, .62], [.43, .76], [.23, .60], [.09, .80]];
+const TALL = [[.24, .13], [.74, .11], [.50, .26], [.20, .40], [.78, .38], [.48, .52], [.19, .66], [.78, .64], [.33, .82], [.72, .86]];
+const SIZE = [1.0, .9, 1.1, .85, 1.0, 1.05, .95, 1.2, .9, 1.25];
+const MOTIF = ['ring', 'waves', 'eye', 'dots', 'half', 'crescent', 'tree', 'face', 'halfR', 'stripes'];
+
+let eng = null, started = false, planets = [], moons = [], stars = [], awake = null;
+let rot = 0, lastT = 0, pointer = { x: -1, y: -1 }, press = null, drag = null;
+let caption = null, wakeToken = 0, failed = null;
+
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const roundShape = (rand, n = 24, j = 0.06) =>
+  Array.from({ length: n }, (_, k) => [k / n * T2 + (rand() - .5) * .1, 1 + (rand() - .5) * 2 * j]);
+function halfShape(rand) {
+  const pts = [];
+  for (let k = 0; k <= 14; k++) { const a = Math.PI + k / 14 * Math.PI, m = 1 + (rand() - .5) * .12; pts.push([Math.cos(a) * m, Math.sin(a) * m + .35]); }
+  for (let k = 1; k < 5; k++) pts.push([1 - k / 5 * 2, .35 + (rand() - .5) * .08]);
+  return pts.map(([x, y]) => [Math.atan2(y, x), Math.hypot(x, y)]);
+}
+function poly(shape, r = 1, cx = 0, cy = 0) {
+  beginShape();
+  for (const [a, m] of shape) vertex(cx + Math.cos(a) * r * m, cy + Math.sin(a) * r * m);
+  endShape(CLOSE);
+}
+
+function makePlanet(track, i) {
+  const rand = rng(i * 977 + 13);
+  const motif = MOTIF[i];
+  const p = {
+    id: track.id, track, i, motif, size: SIZE[i], seed: rand() * 100, tilt: (rand() - .5) * .5,
+    shape: motif === 'half' || motif === 'halfR' ? halfShape(rand) : roundShape(rand, 26, .05),
+    parts: Array.from({ length: 6 }, () => roundShape(rand, 14, .1)),
+    dots: Array.from({ length: 7 }, () => [(rand() - .5) * 1.1, (rand() - .5) * 1.1, .08 + rand() * .07]),
+    angles: Array.from({ length: 7 }, (_, k) => k / 7 * T2 + rand() * .5),
+    x: 0, y: 0, r: 10, shake: 0,
+  };
+  if (motif === 'halfR') p.tilt += Math.PI;
+  if (motif === 'half') p.tilt += Math.PI / 2;
+  if (motif === 'halfR') p.tilt -= Math.PI / 2;
+  return p;
+}
+
+function makeMoon(inst, home, orbit) {
+  const rand = rng((home.i + 1) * 131 + ORDER.indexOf(inst) * 17);
+  return {
+    inst, home: home.id, orbit, traveller: false, muted: false, voice: null,
+    shape: inst === 'synth' ? [[-Math.PI / 2, 1.15], [Math.PI / 6, 1.05], [5 * Math.PI / 6, 1.1]].map(([a, m]) => [a + (rand() - .5) * .2, m])
+      : inst === 'bass' ? halfShape(rand)
+      : inst === 'piano' ? [[-1.1, 1.3], [-2.05, 1.3], [2.05, 1.3], [1.1, 1.3]].map(([a, m]) => [a + (rand() - .5) * .08, m * (1 + (rand() - .5) * .1)])
+      : roundShape(rand, 4, .12).map(([a, m]) => [a + Math.PI / 4, m * 1.2]),
+    x: 0, y: 0, s: 8, angle: 0, bounce: null, born: millis(),
+  };
+}
+
+async function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(Math.min(2, displayDensity()));
+  const rand = rng(7);
+  stars = Array.from({ length: 60 }, () => ({ x: rand(), y: rand(), s: .6 + rand() * 1.8, t: rand() < .5 ? '+' : '-', k: Math.floor(rand() * 4) }));
+  const el = document.querySelector('canvas');
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', () => { press = null; if (drag) settle(drag.moon); drag = null; });
+  el.addEventListener('pointerleave', () => { if (!press) pointer = { x: -1, y: -1 }; });
+  try {
+    eng = await Pinkasol.engine();
+    planets = eng.tracks.map(makePlanet);
+    // The beds, so the first click sounds at once
+    eng.preload(planets.map((p) => eng.piece(p.id, 'drums')).filter(Boolean));
+    window.eng = eng;
+  } catch (e) {
+    failed = String(e.message || e);
+    console.error(e);
+  }
+}
+
+function windowResized() { resizeCanvas(windowWidth, windowHeight); }
+
+// ---- layout ------------------------------------------------------------
+
+function layout(t) {
+  const tall = width < height * 0.85;
+  const pos = tall ? TALL : WIDE;
+  const R = Math.min(width, height) * (tall ? 0.075 : 0.062);
+  const mx = Math.max(R * 1.3, 26), my = Math.max(R * 1.2, 34);
+  for (const p of planets) {
+    const [nx, ny] = pos[p.i];
+    p.r = Math.max(14, R * p.size * (p.motif === 'half' || p.motif === 'halfR' ? 1.25 : 1));
+    p.x = mx + nx * (width - 2 * mx) + Math.sin(t * .00007 + p.seed) * R * .25;
+    p.y = my + ny * (height - 2 * my - 20) + Math.cos(t * .00005 + p.seed * 1.3) * R * .2;
+    if (p.shake) {
+      const k = (t - p.shake) / 450;
+      if (k < 1) p.x += Math.sin(k * 40) * 6 * (1 - k); else p.shake = 0;
+    }
+  }
+}
+
+function orbitRadius(p) { return p.r * 2.15 + 10; }
+
+function placeMoons(dt) {
+  const bar = eng.clock ? eng.clock.bar : 2;
+  rot += dt / 1000 * T2 / (8 * bar);
+  for (const p of planets) {
+    const list = moons.filter((m) => m.orbit === p);
+    list.forEach((m, k) => {
+      m.angle = rot + k / list.length * T2 - Math.PI / 2;
+      const R = orbitRadius(p) * (k % 2 ? 1.08 : 1);
+      m.ox = p.x + Math.cos(m.angle) * R;
+      m.oy = p.y + Math.sin(m.angle) * R;
+      m.s = Math.max(9, p.r * .36) * (m.inst === 'bass' ? 1.3 : 1);
+      if (drag && drag.moon === m) { m.x = pointer.x; m.y = pointer.y; return; }
+      let x = m.ox, y = m.oy;
+      const grow = Math.min(1, (millis() - m.born) / 500);
+      if (grow < 1) { x = p.x + (x - p.x) * grow; y = p.y + (y - p.y) * grow; }
+      if (m.bounce) {
+        const e = Math.min(1, (millis() - m.bounce.t0) / 650);
+        const k2 = 1 - Math.pow(1 - e, 3);
+        x = m.bounce.x + (m.ox - m.bounce.x) * k2 + Math.sin(e * Math.PI * 7) * (1 - e) * 9;
+        y = m.bounce.y + (m.oy - m.bounce.y) * k2;
+        if (e >= 1) m.bounce = null;
+      }
+      m.x = x; m.y = y;
+    });
+  }
+}
+
+// ---- drawing -----------------------------------------------------------
+
+function draw() {
+  const t = millis(), dt = Math.min(100, t - (lastT || t));
+  lastT = t;
+  background(BLUE);
+  if (!eng) {
+    fill(PAPER); noStroke(); textFont(FONT); textAlign(CENTER, CENTER); textSize(14);
+    text(failed ? 'Le son ne charge pas : ' + failed : 'chargement…', width / 2, height / 2);
+    return;
+  }
+  const ph = eng.phase();
+  const pulse = ph ? Math.pow(1 - ph.beat, 3) : 0;
+  const lvl = eng.level();
+  layout(t);
+  placeMoons(dt);
+  drawStars(ph);
+  if (awake) drawOrbit(awake);
+  const target = drag ? planetAt(pointer.x, pointer.y, drag.moon) : null;
+  for (const p of planets) drawPlanet(p, p === awake ? 1 + .05 * pulse + .08 * lvl : 1, target === p);
+  for (const p of planets) drawTitle(p);
+  if (awake) drawMarker(awake, pulse, t);
+  for (const m of moons) if (!drag || drag.moon !== m) drawMoon(m);
+  if (drag) drawMoon(drag.moon, true);
+  drawCaption(t);
+}
+
+function drawStars(ph) {
+  strokeCap(ROUND);
+  for (const s of stars) {
+    const lit = ph && s.k === ph.n % 4 && ph.beat < .25;
+    stroke(253, 253, 253, lit ? 230 : 110);
+    strokeWeight(lit ? 1.6 : 1);
+    const x = s.x * width, y = s.y * height, d = s.s * (lit ? 2.2 : 1.6);
+    line(x - d, y, x + d, y);
+    if (s.t === '+') line(x, y - d, x, y + d);
+  }
+}
+
+function drawOrbit(p) {
+  noFill();
+  stroke(253, 253, 253, 70);
+  strokeWeight(1.2);
+  const R = orbitRadius(p) * 1.06;
+  for (let k = 0; k < 36; k += 2) {
+    const a = k / 36 * T2 + rot * .3;
+    arc(p.x, p.y, R * 2, R * 2, a, a + T2 / 36 * .9);
+  }
+}
+
+function drawPlanet(p, scl, targeted) {
+  push();
+  translate(p.x, p.y);
+  if (targeted) {
+    const ok = eng.compatible(eng.byId[drag.moon.home].key, p.track.key);
+    noFill();
+    strokeWeight(3);
+    if (ok) { stroke(ORANGE); ellipse(0, 0, p.r * 2.7, p.r * 2.7); }
+    else { stroke(253, 253, 253, 120); drawingContext.setLineDash([4, 6]); ellipse(0, 0, p.r * 2.7, p.r * 2.7); drawingContext.setLineDash([]); }
+  }
+  rotate(p.tilt);
+  scale(p.r * scl);
+  noStroke();
+  fill(PAPER);
+  poly(p.shape);
+  fill(BLUE);
+  stroke(BLUE);
+  const sw = (w) => strokeWeight(w);
+  switch (p.motif) {
+    case 'ring':
+      noStroke(); poly(p.parts[0], .62); fill(PAPER); poly(p.parts[1], .42); fill(BLUE); poly(p.parts[2], .13);
+      break;
+    case 'waves':
+      noFill(); sw(.1); strokeCap(SQUARE);
+      for (const y0 of [-.32, 0, .32]) {
+        const lim = Math.sqrt(.8 - y0 * y0) * .85;
+        beginShape();
+        for (let x = -lim; x <= lim + 1e-6; x += lim / 8) vertex(x, y0 + Math.sin(x * 7 + p.seed) * .06);
+        endShape();
+      }
+      break;
+    case 'eye':
+      noStroke(); poly(p.parts[0], .5); fill(PAPER); poly(p.parts[1], .34); fill(BLUE); poly(p.parts[2], .15, .05, .04);
+      stroke(BLUE); sw(.09); strokeCap(SQUARE);
+      for (const a of [-.5, 0, .5]) { const b = -Math.PI / 2 + a; line(Math.cos(b) * .5, Math.sin(b) * .5, Math.cos(b) * .78, Math.sin(b) * .78); }
+      break;
+    case 'dots':
+      noStroke();
+      p.dots.forEach(([x, y, r], k) => poly(p.parts[k % 6], r, x * .8, y * .8));
+      break;
+    case 'half': case 'halfR':
+      noFill(); sw(.06); strokeCap(SQUARE);
+      for (const y0 of [-.05, -.3, -.55]) { const lim = Math.sqrt(Math.max(0, 1 - (y0 - .35) ** 2)) * .7; line(-lim, y0 + .2, lim * .8, y0 + .22); }
+      noStroke(); poly(p.parts[0], .12, .35, -.25);
+      break;
+    case 'crescent':
+      noStroke(); poly(p.parts[0], .78, .45, -.2);
+      fill(PAPER); poly(p.parts[1], .1, -.45, .1);
+      break;
+    case 'tree':
+      noFill(); sw(.1); strokeCap(SQUARE);
+      line(0, .75, 0, -.2); line(0, -.05, -.42, -.55); line(0, -.05, .42, -.55); line(0, -.2, 0, -.75);
+      sw(.07); line(-.42, -.55, -.55, -.62); line(.42, -.55, .55, -.62); line(-.42, -.55, -.42, -.72); line(.42, -.55, .42, -.72);
+      break;
+    case 'face':
+      noStroke();
+      for (const sx of [-1, 1]) {
+        fill(BLUE); poly(p.parts[0], .22, sx * .36, -.18); fill(PAPER); poly(p.parts[1], .12, sx * .36, -.16); fill(BLUE); poly(p.parts[2], .055, sx * .36, -.14);
+        stroke(BLUE); sw(.05); strokeCap(SQUARE);
+        for (const a of [-.45, 0, .45]) { const b = -Math.PI / 2 + a; line(sx * .36 + Math.cos(b) * .22, -.18 + Math.sin(b) * .22, sx * .36 + Math.cos(b) * .34, -.18 + Math.sin(b) * .34); }
+        noStroke();
+      }
+      fill(BLUE);
+      beginShape(); vertex(-.38, .22); vertex(.38, .2);
+      for (let k = 0; k <= 8; k++) { const a = k / 8 * Math.PI; vertex(Math.cos(a) * .36, .22 + Math.sin(a) * .3); }
+      endShape(CLOSE);
+      break;
+    case 'stripes':
+      noStroke();
+      for (const a of p.angles) {
+        beginShape();
+        vertex(Math.cos(a - .14) * 1.02, Math.sin(a - .14) * 1.02);
+        vertex(Math.cos(a + .14) * 1.02, Math.sin(a + .14) * 1.02);
+        vertex(Math.cos(a + .03) * .42, Math.sin(a + .03) * .42);
+        endShape(CLOSE);
+      }
+      break;
+  }
+  pop();
+}
+
+function setSpacing(px) { if ('letterSpacing' in drawingContext) drawingContext.letterSpacing = px + 'px'; }
+
+function drawTitle(p) {
+  noStroke();
+  fill(253, 253, 253, p === awake ? 255 : 215);
+  textFont(FONT);
+  textStyle(BOLD);
+  textAlign(CENTER, TOP);
+  const ts = Math.max(10, Math.min(16, p.r * .34));
+  textSize(ts);
+  setSpacing(1.2);
+  const y = p.y + p.r * (p.motif === 'half' || p.motif === 'halfR' ? 1.05 : 1.12) + 4;
+  text(p.track.title.toUpperCase(), p.x, y);
+  if (p === awake) {
+    textStyle(NORMAL);
+    textSize(Math.max(9, ts * .78));
+    fill(253, 253, 253, 170);
+    text(`${p.track.key} · ${Math.round(p.track.tempo)} bpm${p.track.meter !== 4 ? ` · ${p.track.meter}/4` : ''}`, p.x, y + ts + 2);
+  }
+  setSpacing(0);
+}
+
+// The cover's orange star, over the planet that is awake
+function drawMarker(p, pulse, t) {
+  push();
+  translate(p.x + p.r * .8, p.y - p.r * .95);
+  rotate(t * .0004);
+  scale(Math.max(5, p.r * .26) * (1 + pulse * .35));
+  noStroke();
+  fill(ORANGE);
+  beginShape();
+  const arms = 8;
+  for (let k = 0; k < arms * 2; k++) {
+    const a = k / (arms * 2) * T2, m = k % 2 ? .32 : (k % 4 ? .85 : 1.08);
+    vertex(Math.cos(a) * m, Math.sin(a) * m);
+  }
+  endShape(CLOSE);
+  pop();
+}
+
+function drawMoon(m, dragging) {
+  const v = m.voice;
+  const lv = v && !m.muted ? v.level() : 0;
+  const s = m.s * (1 + lv * .55) * (dragging ? 1.25 : 1);
+  push();
+  translate(m.x, m.y);
+  rotate(m.angle * .5);
+  const ready = !v || v.ready;
+  // a cobalt edge: a moon stays visible over a white planet
+  if (m.muted) { noFill(); stroke(253, 253, 253, 150); } else { stroke(BLUE); fill(253, 253, 253, ready ? 255 : 130); }
+  push(); scale(s);
+  strokeWeight((m.muted ? 1.5 : 2) / s);
+  if (m.muted) drawingContext.setLineDash([3 / s, 3 / s]);
+  poly(m.shape);
+  pop();
+  drawingContext.setLineDash([]);
+  if (m.inst === 'piano' && !m.muted) {
+    stroke(BLUE); strokeWeight(Math.max(1, s * .12));
+    line(-s * .2, -s * .55, -s * .2, s * .1); line(s * .2, -s * .55, s * .2, s * .1);
+  }
+  if (m.traveller) { noStroke(); fill(ORANGE); ellipse(0, 0, Math.max(4, s * .45)); }
+  pop();
+  const hovered = Math.hypot(pointer.x - m.x, pointer.y - m.y) < Math.max(18, m.s * 1.6);
+  if (hovered || dragging || (width >= 560 && !m.muted) || m.traveller) {
+    const p = m.orbit;
+    const out = Math.atan2(m.y - p.y, m.x - p.x);
+    noStroke();
+    fill(253, 253, 253, m.muted ? 150 : 235);
+    textFont(FONT); textStyle(BOLD); textSize(Math.max(9, Math.min(13, m.s * .95)));
+    setSpacing(1);
+    const label = NAMES[m.inst].toUpperCase() + (m.traveller ? ' · ' + eng.byId[m.home].title.toUpperCase() : '');
+    const right = dragging || Math.cos(out) >= 0;
+    let x = dragging ? m.x + s + 8 : m.x + Math.cos(out) * (s + 6);
+    const y = dragging ? m.y : m.y + Math.sin(out) * (s + 4);
+    // inside the frame
+    const tw = textWidth(label);
+    let left = right ? x : x - tw;
+    left = Math.max(4, Math.min(width - 4 - tw, left));
+    textAlign(LEFT, CENTER);
+    text(label, left, y);
+    setSpacing(0);
+  }
+}
+
+function drawCaption(t) {
+  let msg;
+  if (caption && t < caption.until) msg = caption.text;
+  else if (!started) msg = 'Cliquez, glissez — le son arrive au premier geste';
+  else if (drag) msg = 'Posez la lune sur une autre planète';
+  else if (!awake) msg = 'Cliquez une planète pour l\'entendre';
+  else msg = 'Cliquez une lune pour la taire · glissez-la vers une autre planète';
+  noStroke(); fill(253, 253, 253, 225);
+  textFont(FONT); textStyle(BOLD); textAlign(CENTER, BOTTOM);
+  textSize(width < 420 ? 11 : 14);
+  setSpacing(.8);
+  // word-wrapped to the frame, bottom up
+  const lines = [];
+  for (const word of msg.toUpperCase().split(' ')) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && textWidth(last + ' ' + word) <= width - 20) lines[lines.length - 1] = last + ' ' + word;
+    else lines.push(word);
+  }
+  lines.reverse().forEach((l, k) => text(l, width / 2, height - 10 - k * (textSize() + 4)));
+  setSpacing(0);
+}
+
+function say(text, ms = 2600) { caption = { text, until: millis() + ms }; }
+
+// ---- hits ---------------------------------------------------------------
+
+function local(e) {
+  const r = e.target.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function moonAt(x, y) {
+  for (let k = moons.length - 1; k >= 0; k--) {
+    const m = moons[k];
+    if (Math.hypot(x - m.x, y - m.y) < Math.max(16, m.s * 1.6)) return m;
+  }
+  return null;
+}
+function planetAt(x, y, except) {
+  let best = null, bd = Infinity;
+  for (const p of planets) {
+    if (except && except.orbit === p) continue;
+    const d = Math.hypot(x - p.x, y - p.y);
+    if (d < Math.max(18, p.r * 1.25) && d < bd) { best = p; bd = d; }
+  }
+  return best;
+}
+
+function down(e) {
+  if (!eng) return;
+  e.preventDefault();
+  e.target.setPointerCapture(e.pointerId);
+  pointer = local(e);
+  if (!started) { started = true; }
+  eng.unlock();
+  const m = moonAt(pointer.x, pointer.y);
+  press = { x: pointer.x, y: pointer.y, moon: m, planet: m ? null : planetAt(pointer.x, pointer.y) };
+}
+
+function move(e) {
+  pointer = local(e);
+  if (press && press.moon && !drag && Math.hypot(pointer.x - press.x, pointer.y - press.y) > 6) {
+    drag = { moon: press.moon };
+  }
+}
+
+function up(e) {
+  pointer = local(e);
+  const pr = press;
+  press = null;
+  if (!pr) return;
+  if (drag) {
+    const m = drag.moon;
+    drag = null;
+    drop(m, planetAt(pointer.x, pointer.y, m), pointer);
+  } else if (pr.moon) {
+    toggleMute(pr.moon);
+  } else if (pr.planet) {
+    togglePlanet(pr.planet);
+  }
+}
+
+// ---- what happens ---------------------------------------------------------
+
+function toggleMute(m) {
+  m.muted = !m.muted;
+  if (m.voice) m.voice.setGain(m.muted ? 0 : 1, .2);
+}
+
+function stopMoons(list, fade, at) {
+  for (const m of list) if (m.voice) m.voice.stop(fade, at);
+  moons = moons.filter((m) => !list.includes(m));
+}
+
+function togglePlanet(p) {
+  const token = ++wakeToken;
+  if (awake === p) {
+    stopMoons([...moons], .6);
+    awake = null;
+    return;
+  }
+  if (awake) {
+    // The new planet wakes on the next bar of the one that sleeps
+    const t = eng.nextTime('bar');
+    stopMoons([...moons], .25, t);
+    awake = p;
+    const ms = Math.max(0, (t - eng.ctx.currentTime) * 1000 - 80);
+    setTimeout(() => { if (token === wakeToken && awake === p) wake(p); }, ms);
+    return;
+  }
+  wake(p);
+}
+
+// Wake planet p: one moon per instrument, all playing. `kept`: a moon
+// arriving (it keeps playing; p's own moon of that instrument is quiet)
+function wake(p, kept) {
+  awake = p;
+  const insts = ORDER.filter((i) => eng.instruments(p.id).includes(i));
+  for (const inst of insts) {
+    if (kept && kept.home === p.id && kept.inst === inst) continue;
+    const piece = eng.piece(p.id, inst, 0);
+    if (!piece) continue;
+    const m = makeMoon(inst, p, p);
+    m.muted = !!(kept && kept.inst === inst);
+    m.voice = eng.play(piece, { gain: m.muted ? 0 : 1 });
+    moons.push(m);
+  }
+  if (kept) {
+    const own = moons.filter((m) => m !== kept && m.orbit === p);
+    moons = [...own.filter((m) => ORDER.indexOf(m.inst) < ORDER.indexOf(kept.inst)), kept,
+      ...own.filter((m) => ORDER.indexOf(m.inst) >= ORDER.indexOf(kept.inst))];
+  }
+}
+
+function settle(m) { m.bounce = { t0: millis(), x: m.x, y: m.y }; }
+
+function drop(m, target, at) {
+  if (!target || target === m.orbit) { settle(m); return; }
+  const from = eng.byId[m.home];
+  if (!eng.compatible(from.key, target.track.key)) {
+    settle(m);
+    target.shake = millis();
+    say(`${NAMES[m.inst]} de ${from.title} (${from.key}) ne s'entend pas avec ${target.track.title} (${target.track.key}) — elle revient`, 3200);
+    return;
+  }
+  // The instrument travels: the planet it leaves sleeps on the next bar,
+  // the target wakes around it
+  ++wakeToken;
+  const t = eng.nextTime('bar');
+  stopMoons(moons.filter((x) => x !== m), .25, t);
+  if (m.muted) toggleMute(m);
+  m.orbit = target;
+  m.traveller = m.home !== target.id;
+  m.bounce = { t0: millis(), x: at.x, y: at.y };
+  wake(target, m);
+  say(m.traveller ? `${NAMES[m.inst]} de ${from.title} joue sur ${target.track.title}` : `${NAMES[m.inst]} rentre sur ${from.title}`);
+}
+
+window.sky = {
+  get planets() { return planets.map((p) => ({ id: p.id, title: p.track.title, key: p.track.key, x: p.x, y: p.y, r: p.r })); },
+  get moons() { return moons.map((m) => ({ inst: m.inst, home: m.home, orbit: m.orbit.id, traveller: m.traveller, muted: m.muted, x: m.x, y: m.y, s: m.s, playing: !!(m.voice && m.voice.playing), ready: !!(m.voice && m.voice.ready) })); },
+  get awake() { return awake && awake.id; },
+};
+</script>
+</body>
+</html>

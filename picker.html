@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinkasol — picker</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 0; background: #fbeef2; color: #2b1030; }
+  header { position: sticky; top: 0; background: #2b1030; color: #fbeef2; padding: 10px 16px; display: flex; gap: 16px; align-items: center; z-index: 2; }
+  header button { background: #f4c6d4; border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+  header .status { opacity: .8; }
+  main { padding: 8px 16px 80px; }
+  .track { border-bottom: 1px solid #e3b7c6; padding: 10px 0; }
+  .track h2 { font-size: 16px; margin: 0 0 6px; }
+  .track h2 small { font-weight: normal; opacity: .7; }
+  .row { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+  .row b { width: 52px; text-transform: capitalize; }
+  .piece { display: inline-flex; align-items: center; gap: 2px; background: #fff; border: 1px solid #e3b7c6; border-radius: 6px; padding: 2px; }
+  .piece.playing { background: #f4c6d4; border-color: #2b1030; }
+  .piece.kept { box-shadow: 0 0 0 2px #e0582c; }
+  .piece button { border: 0; background: none; cursor: pointer; padding: 3px 5px; border-radius: 4px; font: inherit; }
+  .piece button:hover { background: #fbeef2; }
+  .piece .play { min-width: 92px; text-align: left; }
+  .piece .keep { font-size: 13px; }
+  .hint { font-size: 12px; opacity: .7; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Pinkasol — picker</strong>
+  <button id="stop">Stop all</button>
+  <button id="save">Save picks</button>
+  <span class="status" id="status">Click a piece to loop it; several can play together.</span>
+</header>
+<main id="main"><p>Loading analysis…</p></main>
+<script>
+// Audition the analyser's candidates. A piece = one stem between two bar
+// lines, looped sample-accurately. ◀ ▶ move it one bar, − + change its length
+// in bars, ★ keeps it. "Save picks" writes audio/picks.json (serve.py).
+const INSTRUMENTS = ['drums', 'bass', 'piano', 'synth'];
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+const buffers = new Map();     // "track/inst" -> Promise<AudioBuffer>
+const lru = [];
+const playing = new Map();     // piece id -> { src, gain, el }
+let analysis = {}, picks = {};
+const $ = (s) => document.querySelector(s);
+const status = (t) => { $('#status').textContent = t; };
+
+function stemBuffer(track, inst) {
+  const k = `${track}/${inst}`;
+  if (!buffers.has(k)) {
+    status(`loading ${k}…`);
+    buffers.set(k, fetch(`/audio/stems/${k}.mp3`).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)));
+    lru.push(k);
+    while (lru.length > 8) {
+      const old = lru.shift();
+      if (![...playing.keys()].some((id) => id.startsWith(old + '/'))) buffers.delete(old);
+    }
+  }
+  return buffers.get(k);
+}
+
+function times(track, p) {
+  if (p.free) return { start: p.start, end: p.end };
+  const bars = analysis[track].bars;
+  const a = Math.max(0, Math.min(p.bar, bars.length - 2));
+  const b = Math.min(a + p.bars, bars.length - 1);
+  return { a, start: bars[a], end: bars[b] };
+}
+
+function label(track, p) {
+  const { start, end } = times(track, p);
+  if (p.free) return `rubato ${start.toFixed(1)}–${end.toFixed(1)}s`;
+  return `bar ${p.bar} · ${p.bars}b · ${(end - start).toFixed(1)}s`;
+}
+
+async function toggle(id, track, inst, p, el) {
+  await ctx.resume();
+  if (playing.has(id)) return stop(id);
+  const buf = await stemBuffer(track, inst);
+  const { start, end } = times(track, p);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.loop = true; src.loopStart = start; src.loopEnd = end;
+  const gain = ctx.createGain(); gain.gain.value = 0;
+  src.connect(gain).connect(master);
+  // Start on the next bar of a playing loop of the same track, so pieces of
+  // one track stay in time with each other
+  let when = ctx.currentTime + 0.05;
+  const same = [...playing.values()].find((v) => v.track === track);
+  if (same) {
+    const len = same.end - same.start;
+    const pos = ((ctx.currentTime - same.t0) % len + len) % len;
+    const barLen = analysis[track].bar_seconds;
+    when = ctx.currentTime + (barLen - (pos % barLen));
+  }
+  src.start(when, start);
+  gain.gain.setTargetAtTime(1, when, 0.01);
+  playing.set(id, { src, gain, el, track, start, end, t0: when });
+  el.classList.add('playing');
+  status(`playing ${playing.size} piece(s)`);
+}
+
+function stop(id) {
+  const v = playing.get(id);
+  if (!v) return;
+  v.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+  v.src.stop(ctx.currentTime + 0.3);
+  v.el.classList.remove('playing');
+  playing.delete(id);
+  status(`playing ${playing.size} piece(s)`);
+}
+
+function pieceEl(track, inst, p, idx) {
+  const id = `${track}/${inst}/${idx}`;
+  const el = document.createElement('span');
+  el.className = 'piece';
+  const keepKey = () => (p.free ? `f${p.start}` : `${p.bar}:${p.bars}`);
+  const kept = () => (picks[track]?.[inst] || []).some((q) => (q.free ? `f${q.start}` : `${q.bar}:${q.bars}`) === keepKey());
+  const play = Object.assign(document.createElement('button'), { className: 'play', title: `score ${p.score ?? '—'}` });
+  const refresh = () => { play.textContent = label(track, p); el.classList.toggle('kept', kept()); };
+  play.onclick = () => toggle(id, track, inst, p, el);
+  const edit = (fn) => () => { const was = playing.has(id); if (was) stop(id); fn(); refresh(); if (was) toggle(id, track, inst, p, el); };
+  const btn = (t, title, fn) => Object.assign(document.createElement('button'), { textContent: t, title, onclick: fn });
+  if (p.free) {
+    el.append(play, Object.assign(btn('★', 'keep / unkeep', () => {
+      const list = (picks[track] ??= {})[inst] ??= [];
+      const i = list.findIndex((q) => q.free && q.start === p.start);
+      if (i >= 0) list.splice(i, 1); else list.push({ free: true, start: p.start, end: p.end });
+      refresh();
+    }), { className: 'keep' }));
+    refresh();
+    return el;
+  }
+  el.append(
+    play,
+    btn('◀', 'one bar earlier', edit(() => { p.bar = Math.max(0, p.bar - 1); })),
+    btn('▶', 'one bar later', edit(() => { p.bar = Math.min(analysis[track].bars.length - 2, p.bar + 1); })),
+    btn('−', 'one bar shorter', edit(() => { p.bars = Math.max(1, p.bars - 1); })),
+    btn('+', 'one bar longer', edit(() => { p.bars = Math.min(16, p.bars + 1); })),
+    Object.assign(btn('★', 'keep / unkeep', () => {
+      const list = (picks[track] ??= {})[inst] ??= [];
+      const i = list.findIndex((q) => (q.free ? `f${q.start}` : `${q.bar}:${q.bars}`) === keepKey());
+      if (i >= 0) list.splice(i, 1);
+      else { const { start, end } = times(track, p); list.push(p.free ? { free: true, start, end } : { bar: p.bar, bars: p.bars, start, end }); }
+      refresh();
+    }), { className: 'keep' }),
+  );
+  refresh();
+  return el;
+}
+
+function render() {
+  const main = $('#main'); main.innerHTML = '';
+  for (const [track, t] of Object.entries(analysis)) {
+    const div = document.createElement('div'); div.className = 'track';
+    div.innerHTML = `<h2>${t.title} <small>${t.key} · ${t.meter}/4 · ${t.tempo} bpm${t.free_until ? ` · rubato until ${t.free_until}s` : ''} · bar ${t.bar_seconds}s · ${t.bars.length - 1} bars</small></h2>`;
+    for (const inst of INSTRUMENTS) {
+      const list = t.pieces[inst];
+      if (!list) continue;
+      const row = document.createElement('div'); row.className = 'row';
+      row.append(Object.assign(document.createElement('b'), { textContent: inst }));
+      // picked ones first (from picks.json), then the analyser's
+      const kept = (picks[track]?.[inst] || []).map((q) => ({ ...q }));
+      const k = (q) => (q.free ? `f${q.start}` : `${q.bar}:${q.bars}`);
+      const seen = new Set(kept.map(k));
+      const all = [...kept, ...list.filter((q) => !seen.has(k(q))).map((q) => ({ ...q }))];
+      all.forEach((p, i) => row.append(pieceEl(track, inst, p, i)));
+      div.append(row);
+    }
+    main.append(div);
+  }
+}
+
+$('#stop').onclick = () => [...playing.keys()].forEach(stop);
+$('#save').onclick = async () => {
+  const r = await fetch('/save-picks', { method: 'POST', body: JSON.stringify(picks, null, 1) });
+  status(r.ok ? 'saved audio/picks.json' : `save failed: ${r.status}`);
+};
+
+(async () => {
+  analysis = await (await fetch('/audio/analysis.json')).json();
+  try { picks = await (await fetch('/audio/picks.json')).json(); } catch { picks = {}; }
+  render();
+})();
+</script>
+</body>
+</html>

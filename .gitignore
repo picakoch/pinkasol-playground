@@ -1,0 +1,12 @@
+# Audio and artwork are Picasol's (and the cover artists'): not in the repo.
+# See README.md, "Audio" to rebuild them locally.
+audio/full/
+audio/stems/**/*.mp3
+audio/pieces/**/*.mp3
+img/*.webp
+img/*.jpg
+img/*.png
+
+tools/.venv/
+__pycache__/
+.DS_Store
