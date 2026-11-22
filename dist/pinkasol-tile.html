@@ -224,6 +224,9 @@
       const v = {
         piece: p, track, inst: p.inst, rate, loop, gain, analyser,
         playing: true, ready: false, startsAt: null, src: null, target: o.gain ?? 1, loopLen: p.loop_end,
+        // where the loop starts in the buffer (a part file's lead-in, scaled
+        // like the rest when stretched)
+        offset: p.offset || 0,
         level() {
           analyser.getByteTimeDomainData(td);
           let s = 0;
@@ -279,6 +282,7 @@
           const s = stretchedFor(p, tempoMatched ? clock.bar : null);
           buf = await s.buf;
           v.loopLen = p.loop_end * s.alpha;
+          v.offset = (p.offset || 0) * s.alpha;
           rate = s.ratio; v.rate = rate;
           if (tempoMatched) v.stretched = s.alphaT;
           v.semitones = p.semitones || 0;
@@ -286,7 +290,7 @@
         }
         const src = ctx.createBufferSource();
         src.buffer = buf;
-        if (loop) { src.loop = true; src.loopStart = 0; src.loopEnd = Math.min(v.loopLen, buf.duration); }
+        if (loop) { src.loop = true; src.loopStart = v.offset; src.loopEnd = Math.min(v.offset + v.loopLen, buf.duration); }
         src.connect(gain);
         // (not on a transposed piece: varispeed would bend its new pitch)
         if (!lead && synced && !v.stretched && !p.semitones && clock && track.meter === clock.beats) {
@@ -301,8 +305,8 @@
           clock = { t0: when, bar: real / p.bars, beats: track.meter, tempo: track.tempo * (p.loop_end / real), track: track.id };
           leading = null;
         }
-        src.start(when, 0);
-        if (!loop) src.stop(when + (buf.duration) / rate);
+        src.start(when, v.offset);
+        if (!loop) src.stop(when + (buf.duration - v.offset) / rate);
         src.onended = () => { if (v.playing && !loop) { v.playing = false; voices.delete(v); if (![...voices].some((x) => x.loop && !x.piece.free)) clock = null; emit(); } };
         v.fadeIn = o.fadeIn ?? 0.02;
         gain.gain.setValueAtTime(0, when);
@@ -348,7 +352,7 @@
       const pt = t?.parts?.[k];
       if (!pt) return null;
       return Object.fromEntries(Object.entries(pt.files).map(([inst, file]) => [inst,
-        { inst, file, loop_end: pt.loop_end, bars: pt.bars, free: false, part: k }]));
+        { inst, file, loop_end: pt.loop_end, offset: pt.offset || 0, bars: pt.bars, free: false, part: k }]));
     }
 
     // Replace voice `old` by piece `p` on the next bar: a crossfade
@@ -405,7 +409,7 @@
 </script>
 <script>
 window.PINKASOL_TILE = true;
-const PINKASOL_MANIFEST = {"palette":{"blue":"#174596","paper":"#fdfdfd","orange":"#dc8d4e"},"tracks":[{"id":"01_Rototo","title":"Rototo","key":"Ab minor","meter":4,"tempo":117.45,"bar_seconds":2.009,"parts":[{"start":3.146,"end":19.383,"bars":8,"loop_end":16.237,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"01_Rototo/p1-drums.mp3","bass":"01_Rototo/p1-bass.mp3","piano":"01_Rototo/p1-piano.mp3","synth":"01_Rototo/p1-synth.mp3"}},{"start":59.391,"end":75.442,"bars":8,"loop_end":16.051,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"01_Rototo/p2-drums.mp3","bass":"01_Rototo/p2-bass.mp3","piano":"01_Rototo/p2-piano.mp3","synth":"01_Rototo/p2-synth.mp3"}},{"start":119.055,"end":126.99,"bars":4,"loop_end":7.935,"playing":["drums","piano"],"all":false,"files":{"drums":"01_Rototo/p3-drums.mp3","bass":"01_Rototo/p3-bass.mp3","piano":"01_Rototo/p3-piano.mp3","synth":"01_Rototo/p3-synth.mp3"}},{"start":137.009,"end":152.625,"bars":8,"loop_end":15.616,"playing":["drums","piano"],"all":false,"files":{"drums":"01_Rototo/p4-drums.mp3","bass":"01_Rototo/p4-bass.mp3","piano":"01_Rototo/p4-piano.mp3","synth":"01_Rototo/p4-synth.mp3"}},{"start":170.58,"end":178.631,"bars":4,"loop_end":8.051,"playing":["piano","synth"],"all":false,"files":{"drums":"01_Rototo/p5-drums.mp3","bass":"01_Rototo/p5-bass.mp3","piano":"01_Rototo/p5-piano.mp3","synth":"01_Rototo/p5-synth.mp3"}},{"start":178.631,"end":194.519,"bars":8,"loop_end":15.888,"playing":["piano","synth"],"all":false,"files":{"drums":"01_Rototo/p6-drums.mp3","bass":"01_Rototo/p6-bass.mp3","piano":"01_Rototo/p6-piano.mp3","synth":"01_Rototo/p6-synth.mp3"}}]},{"id":"02_Arroyoyo","title":"Arroyoyo","key":"F minor","meter":4,"tempo":136.0,"bar_seconds":1.765,"parts":[{"start":30.378,"end":37.158,"bars":4,"loop_end":6.78,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"02_Arroyoyo/p1-drums.mp3","bass":"02_Arroyoyo/p1-bass.mp3","piano":"02_Arroyoyo/p1-piano.mp3","synth":"02_Arroyoyo/p1-synth.mp3"}},{"start":42.603,"end":49.424,"bars":4,"loop_end":6.821,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"02_Arroyoyo/p2-drums.mp3","bass":"02_Arroyoyo/p2-bass.mp3","piano":"02_Arroyoyo/p2-piano.mp3","synth":"02_Arroyoyo/p2-synth.mp3"}},{"start":102.725,"end":117.447,"bars":8,"loop_end":14.722,"playing":["drums","piano"],"all":false,"files":{"drums":"02_Arroyoyo/p3-drums.mp3","bass":"02_Arroyoyo/p3-bass.mp3","piano":"02_Arroyoyo/p3-piano.mp3","synth":"02_Arroyoyo/p3-synth.mp3"}},{"start":158.563,"end":165.523,"bars":4,"loop_end":6.96,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"02_Arroyoyo/p4-drums.mp3","bass":"02_Arroyoyo/p4-bass.mp3","piano":"02_Arroyoyo/p4-piano.mp3","synth":"02_Arroyoyo/p4-synth.mp3"}},{"start":168.943,"end":175.972,"bars":4,"loop_end":7.029,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"02_Arroyoyo/p5-drums.mp3","bass":"02_Arroyoyo/p5-bass.mp3","piano":"02_Arroyoyo/p5-piano.mp3","synth":"02_Arroyoyo/p5-synth.mp3"}}]},{"id":"03_Clarita","title":"Clarita","key":"G major","meter":4,"tempo":123.05,"bar_seconds":1.997,"parts":[{"start":0.07,"end":16.028,"bars":8,"loop_end":15.958,"playing":["piano"],"all":false,"files":{"drums":"03_Clarita/p1-drums.mp3","piano":"03_Clarita/p1-piano.mp3","synth":"03_Clarita/p1-synth.mp3"}},{"start":50.022,"end":65.927,"bars":8,"loop_end":15.905,"playing":["piano"],"all":false,"files":{"drums":"03_Clarita/p2-drums.mp3","piano":"03_Clarita/p2-piano.mp3","synth":"03_Clarita/p2-synth.mp3"}},{"start":111.026,"end":119.066,"bars":4,"loop_end":8.04,"playing":["drums"],"all":false,"files":{"drums":"03_Clarita/p3-drums.mp3","piano":"03_Clarita/p3-piano.mp3","synth":"03_Clarita/p3-synth.mp3"}},{"start":158.54,"end":174.556,"bars":8,"loop_end":16.016,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"03_Clarita/p4-drums.mp3","piano":"03_Clarita/p4-piano.mp3","synth":"03_Clarita/p4-synth.mp3"}},{"start":174.556,"end":190.578,"bars":8,"loop_end":16.022,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"03_Clarita/p5-drums.mp3","piano":"03_Clarita/p5-piano.mp3","synth":"03_Clarita/p5-synth.mp3"}},{"start":214.291,"end":230.29,"bars":8,"loop_end":15.999,"playing":["drums","piano"],"all":false,"files":{"drums":"03_Clarita/p6-drums.mp3","piano":"03_Clarita/p6-piano.mp3","synth":"03_Clarita/p6-synth.mp3"}}]},{"id":"04_Noisette","title":"Noisette","key":"F minor","meter":4,"tempo":95.7,"bar_seconds":2.461,"parts":[{"start":15.673,"end":35.265,"bars":8,"loop_end":19.592,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"04_Noisette/p1-drums.mp3","bass":"04_Noisette/p1-bass.mp3","piano":"04_Noisette/p1-piano.mp3","synth":"04_Noisette/p1-synth.mp3"}},{"start":40.171,"end":59.751,"bars":8,"loop_end":19.58,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"04_Noisette/p2-drums.mp3","bass":"04_Noisette/p2-bass.mp3","piano":"04_Noisette/p2-piano.mp3","synth":"04_Noisette/p2-synth.mp3"}},{"start":94.018,"end":113.598,"bars":8,"loop_end":19.58,"playing":["drums","piano"],"all":false,"files":{"drums":"04_Noisette/p3-drums.mp3","bass":"04_Noisette/p3-bass.mp3","piano":"04_Noisette/p3-piano.mp3","synth":"04_Noisette/p3-synth.mp3"}},{"start":125.98,"end":146.042,"bars":8,"loop_end":20.062,"playing":["piano","synth"],"all":false,"files":{"drums":"04_Noisette/p4-drums.mp3","bass":"04_Noisette/p4-bass.mp3","piano":"04_Noisette/p4-piano.mp3","synth":"04_Noisette/p4-synth.mp3"}},{"start":190.2,"end":210.123,"bars":8,"loop_end":19.923,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"04_Noisette/p5-drums.mp3","bass":"04_Noisette/p5-bass.mp3","piano":"04_Noisette/p5-piano.mp3","synth":"04_Noisette/p5-synth.mp3"}},{"start":225.025,"end":234.951,"bars":4,"loop_end":9.926,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"04_Noisette/p6-drums.mp3","bass":"04_Noisette/p6-bass.mp3","piano":"04_Noisette/p6-piano.mp3","synth":"04_Noisette/p6-synth.mp3"}}]},{"id":"05_Malavista","title":"Malavista","key":"F minor","meter":13,"tempo":234.91,"bar_seconds":3.413,"parts":[{"start":6.827,"end":20.503,"bars":4,"loop_end":13.676,"playing":["drums","piano"],"all":false,"files":{"drums":"05_Malavista/p1-drums.mp3","bass":"05_Malavista/p1-bass.mp3","piano":"05_Malavista/p1-piano.mp3","synth":"05_Malavista/p1-synth.mp3"}},{"start":44.426,"end":58.137,"bars":4,"loop_end":13.711,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"05_Malavista/p2-drums.mp3","bass":"05_Malavista/p2-bass.mp3","piano":"05_Malavista/p2-piano.mp3","synth":"05_Malavista/p2-synth.mp3"}},{"start":106.046,"end":119.74,"bars":4,"loop_end":13.694,"playing":["drums","bass","piano","synth"],"all":false,"files":{"drums":"05_Malavista/p3-drums.mp3","bass":"05_Malavista/p3-bass.mp3","piano":"05_Malavista/p3-piano.mp3","synth":"05_Malavista/p3-synth.mp3"}},{"start":123.164,"end":136.829,"bars":4,"loop_end":13.665,"playing":["drums","bass","piano","synth"],"all":true,"files":{"drums":"05_Malavista/p4-drums.mp3","bass":"05_Malavista/p4-bass.mp3","piano":"05_Malavista/p4-piano.mp3","synth":"05_Malavista/p4-synth.mp3"}}]},{"id":"06_Exit_B","title":"Exit B","key":"C minor","meter":4,"tempo":127.0,"bar_seconds":1.881,"parts":[{"start":23.824,"end":39.068,"bars":8,"loop_end":15.244,"playing":["drums","piano"],"all":false,"files":{"drums":"06_Exit_B/p1-drums.mp3","piano":"06_Exit_B/p1-piano.mp3","synth":"06_Exit_B/p1-synth.mp3"}},{"start":84.573,"end":99.55,"bars":8,"loop_end":14.977,"playing":["drums","piano"],"all":false,"files":{"drums":"06_Exit_B/p2-drums.mp3","piano":"06_Exit_B/p2-piano.mp3","synth":"06_Exit_B/p2-synth.mp3"}},{"start":138.443,"end":153.199,"bars":8,"loop_end":14.756,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"06_Exit_B/p3-drums.mp3","piano":"06_Exit_B/p3-piano.mp3","synth":"06_Exit_B/p3-synth.mp3"}},{"start":171.961,"end":187.176,"bars":8,"loop_end":15.215,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"06_Exit_B/p4-drums.mp3","piano":"06_Exit_B/p4-piano.mp3","synth":"06_Exit_B/p4-synth.mp3"}},{"start":187.176,"end":202.437,"bars":8,"loop_end":15.261,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"06_Exit_B/p5-drums.mp3","piano":"06_Exit_B/p5-piano.mp3","synth":"06_Exit_B/p5-synth.mp3"}},{"start":226.83,"end":234.504,"bars":4,"loop_end":7.674,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"06_Exit_B/p6-drums.mp3","piano":"06_Exit_B/p6-piano.mp3","synth":"06_Exit_B/p6-synth.mp3"}}]},{"id":"07_Asperges","title":"Asperges","key":"D major","meter":4,"tempo":117.45,"bar_seconds":1.997,"parts":[{"start":8.052,"end":24.056,"bars":8,"loop_end":16.004,"playing":["bass","piano"],"all":false,"files":{"drums":"07_Asperges/p1-drums.mp3","bass":"07_Asperges/p1-bass.mp3","piano":"07_Asperges/p1-piano.mp3","synth":"07_Asperges/p1-synth.mp3"}},{"start":76.539,"end":92.52,"bars":8,"loop_end":15.981,"playing":["drums","piano"],"all":false,"files":{"drums":"07_Asperges/p2-drums.mp3","bass":"07_Asperges/p2-bass.mp3","piano":"07_Asperges/p2-piano.mp3","synth":"07_Asperges/p2-synth.mp3"}},{"start":98.58,"end":114.55,"bars":8,"loop_end":15.97,"playing":["drums","piano"],"all":false,"files":{"drums":"07_Asperges/p3-drums.mp3","bass":"07_Asperges/p3-bass.mp3","piano":"07_Asperges/p3-piano.mp3","synth":"07_Asperges/p3-synth.mp3"}},{"start":161.054,"end":177.058,"bars":8,"loop_end":16.004,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"07_Asperges/p4-drums.mp3","bass":"07_Asperges/p4-bass.mp3","piano":"07_Asperges/p4-piano.mp3","synth":"07_Asperges/p4-synth.mp3"}},{"start":211.058,"end":227.045,"bars":8,"loop_end":15.987,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"07_Asperges/p5-drums.mp3","bass":"07_Asperges/p5-bass.mp3","piano":"07_Asperges/p5-piano.mp3","synth":"07_Asperges/p5-synth.mp3"}},{"start":239.055,"end":255.036,"bars":8,"loop_end":15.981,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"07_Asperges/p6-drums.mp3","bass":"07_Asperges/p6-bass.mp3","piano":"07_Asperges/p6-piano.mp3","synth":"07_Asperges/p6-synth.mp3"}},{"start":257.138,"end":273.293,"bars":8,"loop_end":16.155,"playing":["bass","piano"],"all":false,"files":{"drums":"07_Asperges/p7-drums.mp3","bass":"07_Asperges/p7-bass.mp3","piano":"07_Asperges/p7-piano.mp3","synth":"07_Asperges/p7-synth.mp3"}}]},{"id":"08_Pinkasol","title":"Pinkasol","key":"G minor","meter":4,"tempo":123.05,"bar_seconds":1.974,"parts":[{"start":28.026,"end":36.026,"bars":4,"loop_end":8.0,"playing":["drums","piano"],"all":false,"files":{"drums":"08_Pinkasol/p1-drums.mp3","bass":"08_Pinkasol/p1-bass.mp3","piano":"08_Pinkasol/p1-piano.mp3","synth":"08_Pinkasol/p1-synth.mp3"}},{"start":56.018,"end":71.999,"bars":8,"loop_end":15.981,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"08_Pinkasol/p2-drums.mp3","bass":"08_Pinkasol/p2-bass.mp3","piano":"08_Pinkasol/p2-piano.mp3","synth":"08_Pinkasol/p2-synth.mp3"}},{"start":94.012,"end":110.005,"bars":8,"loop_end":15.993,"playing":["drums","bass","piano"],"all":false,"files":{"drums":"08_Pinkasol/p3-drums.mp3","bass":"08_Pinkasol/p3-bass.mp3","piano":"08_Pinkasol/p3-piano.mp3","synth":"08_Pinkasol/p3-synth.mp3"}},{"start":179.554,"end":194.647,"bars":8,"loop_end":15.093,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"08_Pinkasol/p4-drums.mp3","bass":"08_Pinkasol/p4-bass.mp3","piano":"08_Pinkasol/p4-piano.mp3","synth":"08_Pinkasol/p4-synth.mp3"}},{"start":200.214,"end":214.86,"bars":8,"loop_end":14.646,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"08_Pinkasol/p5-drums.mp3","bass":"08_Pinkasol/p5-bass.mp3","piano":"08_Pinkasol/p5-piano.mp3","synth":"08_Pinkasol/p5-synth.mp3"}}]},{"id":"09_Cosmos","title":"Cosmos","key":"Bb minor","meter":4,"tempo":99.38,"bar_seconds":2.438,"parts":[{"start":31.695,"end":51.281,"bars":8,"loop_end":19.586,"playing":["drums","piano"],"all":false,"files":{"drums":"09_Cosmos/p1-drums.mp3","piano":"09_Cosmos/p1-piano.mp3","synth":"09_Cosmos/p1-synth.mp3"}},{"start":51.281,"end":61.022,"bars":4,"loop_end":9.741,"playing":["drums","piano"],"all":false,"files":{"drums":"09_Cosmos/p2-drums.mp3","piano":"09_Cosmos/p2-piano.mp3","synth":"09_Cosmos/p2-synth.mp3"}},{"start":129.149,"end":148.747,"bars":8,"loop_end":19.598,"playing":["piano"],"all":false,"files":{"drums":"09_Cosmos/p3-drums.mp3","piano":"09_Cosmos/p3-piano.mp3","synth":"09_Cosmos/p3-synth.mp3"}},{"start":185.272,"end":204.521,"bars":8,"loop_end":19.249,"playing":["piano","synth"],"all":false,"files":{"drums":"09_Cosmos/p4-drums.mp3","piano":"09_Cosmos/p4-piano.mp3","synth":"09_Cosmos/p4-synth.mp3"}},{"start":211.859,"end":231.468,"bars":8,"loop_end":19.609,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"09_Cosmos/p5-drums.mp3","piano":"09_Cosmos/p5-piano.mp3","synth":"09_Cosmos/p5-synth.mp3"}},{"start":246.12,"end":265.77,"bars":8,"loop_end":19.65,"playing":["drums","piano"],"all":false,"files":{"drums":"09_Cosmos/p6-drums.mp3","piano":"09_Cosmos/p6-piano.mp3","synth":"09_Cosmos/p6-synth.mp3"}}]},{"id":"10_El_Tigre","title":"El Tigre","key":"G major","meter":4,"tempo":136.0,"bar_seconds":1.788,"parts":[{"start":31.956,"end":46.829,"bars":8,"loop_end":14.873,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p1-drums.mp3","piano":"10_El_Tigre/p1-piano.mp3","synth":"10_El_Tigre/p1-synth.mp3"}},{"start":81.496,"end":96.073,"bars":8,"loop_end":14.577,"playing":["drums","piano"],"all":false,"files":{"drums":"10_El_Tigre/p2-drums.mp3","piano":"10_El_Tigre/p2-piano.mp3","synth":"10_El_Tigre/p2-synth.mp3"}},{"start":208.324,"end":222.958,"bars":8,"loop_end":14.634,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"10_El_Tigre/p3-drums.mp3","piano":"10_El_Tigre/p3-piano.mp3","synth":"10_El_Tigre/p3-synth.mp3"}},{"start":232.13,"end":246.787,"bars":8,"loop_end":14.657,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p4-drums.mp3","piano":"10_El_Tigre/p4-piano.mp3","synth":"10_El_Tigre/p4-synth.mp3"}},{"start":347.58,"end":361.744,"bars":8,"loop_end":14.164,"playing":["drums","piano"],"all":false,"files":{"drums":"10_El_Tigre/p5-drums.mp3","piano":"10_El_Tigre/p5-piano.mp3","synth":"10_El_Tigre/p5-synth.mp3"}},{"start":382.682,"end":396.794,"bars":8,"loop_end":14.112,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p6-drums.mp3","piano":"10_El_Tigre/p6-piano.mp3","synth":"10_El_Tigre/p6-synth.mp3"}},{"start":427.137,"end":441.249,"bars":8,"loop_end":14.112,"playing":["drums","piano","synth"],"all":false,"files":{"drums":"10_El_Tigre/p7-drums.mp3","piano":"10_El_Tigre/p7-piano.mp3","synth":"10_El_Tigre/p7-synth.mp3"}}]}],"urls":{"01_Rototo/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_drums_3e16df737c.mp3","01_Rototo/p1-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_bass_3b515ec849.mp3","01_Rototo/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_piano_cd04ce853e.mp3","01_Rototo/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_synth_bc05a4e9fc.mp3","01_Rototo/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_drums_00a065ae92.mp3","01_Rototo/p2-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_bass_a1348649c9.mp3","01_Rototo/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_piano_95029e6f13.mp3","01_Rototo/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_synth_b620b7f313.mp3","01_Rototo/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_drums_11f8de7f66.mp3","01_Rototo/p3-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_bass_cc4f4eb8a0.mp3","01_Rototo/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_piano_6ffe1ba462.mp3","01_Rototo/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_synth_827ec32657.mp3","01_Rototo/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_drums_725bba2c9d.mp3","01_Rototo/p4-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_bass_81b613e77f.mp3","01_Rototo/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_piano_4b40ade14f.mp3","01_Rototo/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_synth_558d0a0d5d.mp3","01_Rototo/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p5_drums_8b42adbebd.mp3","01_Rototo/p5-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p5_bass_6c6595a18c.mp3","01_Rototo/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p5_piano_3de3455443.mp3","01_Rototo/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p5_synth_68e4db2f89.mp3","01_Rototo/p6-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p6_drums_6e0b09f1ba.mp3","01_Rototo/p6-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p6_bass_0678e53d72.mp3","01_Rototo/p6-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p6_piano_e213dde6a9.mp3","01_Rototo/p6-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p6_synth_5bc82feb9e.mp3","02_Arroyoyo/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_drums_793073df6a.mp3","02_Arroyoyo/p1-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_bass_4d377ba651.mp3","02_Arroyoyo/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_piano_e0a45cbe55.mp3","02_Arroyoyo/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_synth_60818a7edb.mp3","02_Arroyoyo/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_drums_caef217989.mp3","02_Arroyoyo/p2-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_bass_ab6373d170.mp3","02_Arroyoyo/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_piano_7dce5db1d4.mp3","02_Arroyoyo/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_synth_8443ec9f27.mp3","02_Arroyoyo/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_drums_f9168ad945.mp3","02_Arroyoyo/p3-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_bass_78349e3ba3.mp3","02_Arroyoyo/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_piano_94f2a47c18.mp3","02_Arroyoyo/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_synth_9327273a81.mp3","02_Arroyoyo/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_drums_96f065a37f.mp3","02_Arroyoyo/p4-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_bass_a5c5f687f2.mp3","02_Arroyoyo/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_piano_56942496c3.mp3","02_Arroyoyo/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_synth_92018df187.mp3","02_Arroyoyo/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p5_drums_f78b6f2bbd.mp3","02_Arroyoyo/p5-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p5_bass_09239e842e.mp3","02_Arroyoyo/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p5_piano_0074c6167c.mp3","02_Arroyoyo/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p5_synth_7303833d72.mp3","03_Clarita/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p1_drums_9468d66a47.mp3","03_Clarita/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p1_piano_e2fce6ba00.mp3","03_Clarita/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p1_synth_b35019e5df.mp3","03_Clarita/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p2_drums_babe431857.mp3","03_Clarita/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p2_piano_11584fd30f.mp3","03_Clarita/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p2_synth_d5c1847278.mp3","03_Clarita/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p3_drums_8712332221.mp3","03_Clarita/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p3_piano_63a90d2ca4.mp3","03_Clarita/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p3_synth_636bb9500a.mp3","03_Clarita/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p4_drums_64b6afc4b3.mp3","03_Clarita/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p4_piano_5da49584e6.mp3","03_Clarita/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p4_synth_71143dc4a4.mp3","03_Clarita/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p5_drums_ca83db6c89.mp3","03_Clarita/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p5_piano_4b5535166e.mp3","03_Clarita/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p5_synth_e52007538d.mp3","03_Clarita/p6-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p6_drums_8396ec6304.mp3","03_Clarita/p6-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p6_piano_a9d505499b.mp3","03_Clarita/p6-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p6_synth_cd28026992.mp3","04_Noisette/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_drums_9392240059.mp3","04_Noisette/p1-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_bass_9c56ea2393.mp3","04_Noisette/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_piano_80c5f67e4c.mp3","04_Noisette/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_synth_eaa242cb82.mp3","04_Noisette/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_drums_c87d61434c.mp3","04_Noisette/p2-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_bass_0403660198.mp3","04_Noisette/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_piano_1d7c6e549f.mp3","04_Noisette/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_synth_99b2b00a1f.mp3","04_Noisette/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_drums_15eabf33cc.mp3","04_Noisette/p3-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_bass_9af8fc56f0.mp3","04_Noisette/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_piano_2074e05f67.mp3","04_Noisette/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_synth_28db65a5cf.mp3","04_Noisette/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_drums_be43318763.mp3","04_Noisette/p4-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_bass_a5c26424c6.mp3","04_Noisette/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_piano_bccfb1f72f.mp3","04_Noisette/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_synth_c2e9638307.mp3","04_Noisette/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_drums_d7b5ea0aa7.mp3","04_Noisette/p5-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_bass_15d6df5464.mp3","04_Noisette/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_piano_61a39b34f2.mp3","04_Noisette/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_synth_044a3b9978.mp3","04_Noisette/p6-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p6_drums_a1d820ec3c.mp3","04_Noisette/p6-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p6_bass_971d1bd4c0.mp3","04_Noisette/p6-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p6_piano_65590c68ed.mp3","04_Noisette/p6-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p6_synth_9173913f9b.mp3","05_Malavista/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_drums_d234e43b1e.mp3","05_Malavista/p1-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_bass_aa06ecf289.mp3","05_Malavista/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_piano_b86afa8b32.mp3","05_Malavista/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_synth_bc76959b10.mp3","05_Malavista/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_drums_2e16693db2.mp3","05_Malavista/p2-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_bass_80612a52f4.mp3","05_Malavista/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_piano_e06a69a5a9.mp3","05_Malavista/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_synth_1781ffaa13.mp3","05_Malavista/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_drums_90489f4217.mp3","05_Malavista/p3-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_bass_e0e46ec75e.mp3","05_Malavista/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_piano_6f26935f77.mp3","05_Malavista/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_synth_07528dc6c7.mp3","05_Malavista/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p4_drums_70cffbc327.mp3","05_Malavista/p4-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p4_bass_92376f3332.mp3","05_Malavista/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p4_piano_f5f503b84a.mp3","05_Malavista/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p4_synth_6cbb5c9d3d.mp3","06_Exit_B/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p1_drums_2eeb2c3438.mp3","06_Exit_B/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p1_piano_fb63fcbf0d.mp3","06_Exit_B/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p1_synth_dbf0c7d073.mp3","06_Exit_B/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p2_drums_1569d1317b.mp3","06_Exit_B/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p2_piano_6782379a72.mp3","06_Exit_B/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p2_synth_89f2b8ae5a.mp3","06_Exit_B/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p3_drums_f0d3eeab76.mp3","06_Exit_B/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p3_piano_72efdb3344.mp3","06_Exit_B/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p3_synth_5f95939944.mp3","06_Exit_B/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p4_drums_5289a42ae0.mp3","06_Exit_B/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p4_piano_5e5d30e451.mp3","06_Exit_B/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p4_synth_ed3073059b.mp3","06_Exit_B/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p5_drums_1f850723cd.mp3","06_Exit_B/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p5_piano_cf069b34f2.mp3","06_Exit_B/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p5_synth_97f03dcfa0.mp3","06_Exit_B/p6-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p6_drums_db4566f5a8.mp3","06_Exit_B/p6-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p6_piano_4353db4ebb.mp3","06_Exit_B/p6-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p6_synth_06abd5b9b4.mp3","07_Asperges/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_drums_9f291bee80.mp3","07_Asperges/p1-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_bass_429fc2ddd0.mp3","07_Asperges/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_piano_1dfa784544.mp3","07_Asperges/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_synth_8a78687bfd.mp3","07_Asperges/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_drums_80f48ae45e.mp3","07_Asperges/p2-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_bass_c38884d6fe.mp3","07_Asperges/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_piano_92793e69cc.mp3","07_Asperges/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_synth_da5b60876e.mp3","07_Asperges/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_drums_0da0c4e9ef.mp3","07_Asperges/p3-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_bass_18f3ec0b59.mp3","07_Asperges/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_piano_ad708e8b5b.mp3","07_Asperges/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_synth_703a1ce69e.mp3","07_Asperges/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_drums_6e8d29fd32.mp3","07_Asperges/p4-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_bass_693b320fef.mp3","07_Asperges/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_piano_c7afac8602.mp3","07_Asperges/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_synth_7baaf21e55.mp3","07_Asperges/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_drums_886833ab74.mp3","07_Asperges/p5-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_bass_0ee86b0b67.mp3","07_Asperges/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_piano_6ab77f37cc.mp3","07_Asperges/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_synth_7a0a0b41a6.mp3","07_Asperges/p6-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p6_drums_793ef2e6e9.mp3","07_Asperges/p6-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p6_bass_7331787f62.mp3","07_Asperges/p6-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p6_piano_a024bf9c10.mp3","07_Asperges/p6-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p6_synth_5dd0ad71f7.mp3","07_Asperges/p7-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p7_drums_cad2adbef6.mp3","07_Asperges/p7-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p7_bass_8dfc27cdfb.mp3","07_Asperges/p7-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p7_piano_0a8a5554a2.mp3","07_Asperges/p7-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p7_synth_df878f9c69.mp3","08_Pinkasol/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_drums_88545698c9.mp3","08_Pinkasol/p1-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_bass_206d991f3c.mp3","08_Pinkasol/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_piano_280469252d.mp3","08_Pinkasol/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_synth_360d27b0cb.mp3","08_Pinkasol/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_drums_9a9b183150.mp3","08_Pinkasol/p2-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_bass_970f61f57c.mp3","08_Pinkasol/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_piano_8572b13887.mp3","08_Pinkasol/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_synth_3ddbc1a676.mp3","08_Pinkasol/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_drums_5cf18db91b.mp3","08_Pinkasol/p3-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_bass_d7b77e6dcc.mp3","08_Pinkasol/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_piano_6fd54c53da.mp3","08_Pinkasol/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_synth_d6c3eb3919.mp3","08_Pinkasol/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p4_drums_0d56930e87.mp3","08_Pinkasol/p4-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p4_bass_f4f928de1d.mp3","08_Pinkasol/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p4_piano_2278d7f25d.mp3","08_Pinkasol/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p4_synth_0dd0bc0d80.mp3","08_Pinkasol/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p5_drums_7315a35104.mp3","08_Pinkasol/p5-bass.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p5_bass_e924dd0a12.mp3","08_Pinkasol/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p5_piano_7b00c23566.mp3","08_Pinkasol/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p5_synth_c20972ddd9.mp3","09_Cosmos/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p1_drums_097b2cce6c.mp3","09_Cosmos/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p1_piano_13ebd5b5b8.mp3","09_Cosmos/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p1_synth_c95706a875.mp3","09_Cosmos/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p2_drums_b1e5ad60dc.mp3","09_Cosmos/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p2_piano_90359ddd4c.mp3","09_Cosmos/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p2_synth_8a6f54adc2.mp3","09_Cosmos/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p3_drums_ef9f8c6e89.mp3","09_Cosmos/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p3_piano_2d75f5da1d.mp3","09_Cosmos/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p3_synth_cba6ce5eca.mp3","09_Cosmos/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p4_drums_737bf07b6d.mp3","09_Cosmos/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p4_piano_850680c20d.mp3","09_Cosmos/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p4_synth_cad6910a43.mp3","09_Cosmos/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p5_drums_5c25f5bb65.mp3","09_Cosmos/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p5_piano_1d2f118cdb.mp3","09_Cosmos/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p5_synth_1f493b3304.mp3","09_Cosmos/p6-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p6_drums_57b36e1959.mp3","09_Cosmos/p6-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p6_piano_2a1b44f2bb.mp3","09_Cosmos/p6-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p6_synth_a51747189c.mp3","10_El_Tigre/p1-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p1_drums_09c4713445.mp3","10_El_Tigre/p1-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p1_piano_f6bcfefe78.mp3","10_El_Tigre/p1-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p1_synth_91a4f5b429.mp3","10_El_Tigre/p2-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p2_drums_6f2a2147aa.mp3","10_El_Tigre/p2-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p2_piano_99f078f3d2.mp3","10_El_Tigre/p2-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p2_synth_8a1eb34d21.mp3","10_El_Tigre/p3-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p3_drums_04b87c4339.mp3","10_El_Tigre/p3-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p3_piano_4537c169cf.mp3","10_El_Tigre/p3-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p3_synth_23e41e5352.mp3","10_El_Tigre/p4-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p4_drums_9baf4692d6.mp3","10_El_Tigre/p4-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p4_piano_c2e751f1d1.mp3","10_El_Tigre/p4-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p4_synth_34020d81de.mp3","10_El_Tigre/p5-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p5_drums_8329120e52.mp3","10_El_Tigre/p5-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p5_piano_2428814e9c.mp3","10_El_Tigre/p5-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p5_synth_1426f73d48.mp3","10_El_Tigre/p6-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p6_drums_1e8914610c.mp3","10_El_Tigre/p6-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p6_piano_6f9106bde8.mp3","10_El_Tigre/p6-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p6_synth_cdb592f017.mp3","10_El_Tigre/p7-drums.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p7_drums_4cf6126c31.mp3","10_El_Tigre/p7-piano.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p7_piano_76550aa5c3.mp3","10_El_Tigre/p7-synth.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p7_synth_ab5964d0b2.mp3"}};
+const PINKASOL_MANIFEST = {"palette":{"blue":"#174596","paper":"#fdfdfd","orange":"#dc8d4e"},"tracks":[{"id":"01_Rototo","title":"Rototo","key":"Ab minor","meter":4,"tempo":117.45,"bar_seconds":2.009,"parts":[{"start":9.253,"end":17.345,"bars":4,"loop_end":8.092,"offset":0.1,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"01_Rototo/p1-drums-82ef5d.mp3","bass":"01_Rototo/p1-bass-4a932d.mp3","piano":"01_Rototo/p1-piano-5a8667.mp3","synth":"01_Rototo/p1-synth-860a2d.mp3"}},{"start":59.391,"end":75.442,"bars":8,"loop_end":16.051,"offset":0.1,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"01_Rototo/p2-drums-564eab.mp3","bass":"01_Rototo/p2-bass-f79803.mp3","piano":"01_Rototo/p2-piano-e13381.mp3","synth":"01_Rototo/p2-synth-50d08d.mp3"}},{"start":137.009,"end":152.625,"bars":8,"loop_end":15.616,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"01_Rototo/p3-drums-034603.mp3","bass":"01_Rototo/p3-bass-0a07b2.mp3","piano":"01_Rototo/p3-piano-3fe76c.mp3","synth":"01_Rototo/p3-synth-b4b08c.mp3"}},{"start":170.58,"end":180.582,"bars":5,"loop_end":10.002,"offset":0.1,"playing":["piano","synth"],"all":false,"files":{"drums":"01_Rototo/p4-drums-850770.mp3","bass":"01_Rototo/p4-bass-a55188.mp3","piano":"01_Rototo/p4-piano-3b9e3a.mp3","synth":"01_Rototo/p4-synth-720d22.mp3"}}]},{"id":"02_Arroyoyo","title":"Arroyoyo","key":"F minor","meter":4,"tempo":136.0,"bar_seconds":1.765,"parts":[{"start":28.561,"end":35.439,"bars":4,"loop_end":6.878,"offset":0.1,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"02_Arroyoyo/p1-drums-e454e8.mp3","bass":"02_Arroyoyo/p1-bass-1df11f.mp3","piano":"02_Arroyoyo/p1-piano-682904.mp3","synth":"02_Arroyoyo/p1-synth-7ae979.mp3"}},{"start":42.603,"end":49.424,"bars":4,"loop_end":6.821,"offset":0.1,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"02_Arroyoyo/p2-drums-4ea926.mp3","bass":"02_Arroyoyo/p2-bass-b27417.mp3","piano":"02_Arroyoyo/p2-piano-8ae0e7.mp3","synth":"02_Arroyoyo/p2-synth-528785.mp3"}},{"start":102.725,"end":117.447,"bars":8,"loop_end":14.722,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"02_Arroyoyo/p3-drums-392886.mp3","bass":"02_Arroyoyo/p3-bass-0a7e13.mp3","piano":"02_Arroyoyo/p3-piano-5acc2f.mp3","synth":"02_Arroyoyo/p3-synth-a1a2e2.mp3"}},{"start":156.758,"end":165.523,"bars":5,"loop_end":8.765,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"02_Arroyoyo/p4-drums-0feeb2.mp3","bass":"02_Arroyoyo/p4-bass-e5edd1.mp3","piano":"02_Arroyoyo/p4-piano-34702d.mp3","synth":"02_Arroyoyo/p4-synth-efa523.mp3"}}]},{"id":"03_Clarita","title":"Clarita","key":"G major","meter":4,"tempo":123.05,"bar_seconds":1.997,"parts":[{"start":1.039,"end":9.004,"bars":4,"loop_end":7.965,"offset":0.1,"playing":["piano"],"all":false,"files":{"drums":"03_Clarita/p1-drums-f98d55.mp3","piano":"03_Clarita/p1-piano-582627.mp3","synth":"03_Clarita/p1-synth-fb6b15.mp3"}},{"start":50.022,"end":61.039,"bars":5.5,"loop_end":11.017,"offset":0.1,"playing":["piano"],"all":false,"files":{"drums":"03_Clarita/p2-drums-ed274f.mp3","piano":"03_Clarita/p2-piano-5c5da5.mp3","synth":"03_Clarita/p2-synth-91ecc4.mp3"}},{"start":111.026,"end":119.066,"bars":4,"loop_end":8.04,"offset":0.1,"playing":["drums"],"all":false,"files":{"drums":"03_Clarita/p3-drums-b14946.mp3","piano":"03_Clarita/p3-piano-589bd3.mp3","synth":"03_Clarita/p3-synth-3600f4.mp3"}},{"start":160.491,"end":168.519,"bars":4,"loop_end":8.028,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"03_Clarita/p4-drums-2750d3.mp3","piano":"03_Clarita/p4-piano-b10aa5.mp3","synth":"03_Clarita/p4-synth-ffa631.mp3"}},{"start":214.291,"end":222.279,"bars":4,"loop_end":7.988,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"03_Clarita/p5-drums-d7b1fb.mp3","piano":"03_Clarita/p5-piano-904b36.mp3","synth":"03_Clarita/p5-synth-de800c.mp3"}}]},{"id":"04_Noisette","title":"Noisette","key":"F minor","meter":4,"tempo":95.7,"bar_seconds":2.461,"parts":[{"start":20.544,"end":30.412,"bars":4,"loop_end":9.868,"offset":0.1,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"04_Noisette/p1-drums-180bd4.mp3","bass":"04_Noisette/p1-bass-478928.mp3","piano":"04_Noisette/p1-piano-d45098.mp3","synth":"04_Noisette/p1-synth-2a6f40.mp3"}},{"start":40.171,"end":45.064,"bars":2,"loop_end":4.893,"offset":0.1,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"04_Noisette/p2-drums-bca571.mp3","bass":"04_Noisette/p2-bass-d170ca.mp3","piano":"04_Noisette/p2-piano-bf9f2c.mp3","synth":"04_Noisette/p2-synth-e88afa.mp3"}},{"start":79.325,"end":98.923,"bars":8,"loop_end":19.598,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"04_Noisette/p3-drums-fb1a1b.mp3","bass":"04_Noisette/p3-bass-08bc51.mp3","piano":"04_Noisette/p3-piano-8da610.mp3","synth":"04_Noisette/p3-synth-8aca33.mp3"}},{"start":128.546,"end":148.497,"bars":8,"loop_end":19.951,"offset":0.1,"playing":["piano","synth"],"all":false,"files":{"drums":"04_Noisette/p4-drums-94bd92.mp3","bass":"04_Noisette/p4-bass-2166b3.mp3","piano":"04_Noisette/p4-piano-2922fc.mp3","synth":"04_Noisette/p4-synth-d3cb1d.mp3"}},{"start":190.2,"end":210.123,"bars":8,"loop_end":19.923,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"04_Noisette/p5-drums-c00072.mp3","bass":"04_Noisette/p5-bass-a61268.mp3","piano":"04_Noisette/p5-piano-53e4b5.mp3","synth":"04_Noisette/p5-synth-871559.mp3"}}]},{"id":"05_Malavista","title":"Malavista","key":"F minor","meter":13,"tempo":234.91,"bar_seconds":3.413,"parts":[{"start":6.827,"end":13.653,"bars":2,"loop_end":6.826,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"05_Malavista/p1-drums-cdfdca.mp3","bass":"05_Malavista/p1-bass-d88ab5.mp3","piano":"05_Malavista/p1-piano-9fcf41.mp3","synth":"05_Malavista/p1-synth-7f6de8.mp3"}},{"start":75.227,"end":88.909,"bars":4,"loop_end":13.682,"offset":0.1,"playing":["bass","piano"],"all":false,"files":{"drums":"05_Malavista/p2-drums-ce3f1a.mp3","bass":"05_Malavista/p2-bass-6dc310.mp3","piano":"05_Malavista/p2-piano-0ee74b.mp3","synth":"05_Malavista/p2-synth-035dfe.mp3"}},{"start":123.164,"end":136.829,"bars":4,"loop_end":13.665,"offset":0.1,"playing":["drums","bass","piano","synth"],"all":true,"files":{"drums":"05_Malavista/p3-drums-b5b3fa.mp3","bass":"05_Malavista/p3-bass-e00fe4.mp3","piano":"05_Malavista/p3-piano-de6d26.mp3","synth":"05_Malavista/p3-synth-bd4c8b.mp3"}}]},{"id":"06_Exit_B","title":"Exit B","key":"C minor","meter":4,"tempo":127.0,"bar_seconds":1.881,"parts":[{"start":24.3,"end":39.532,"bars":8,"loop_end":15.232,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"06_Exit_B/p1-drums-c8ec65.mp3","piano":"06_Exit_B/p1-piano-cdd03a.mp3","synth":"06_Exit_B/p1-synth-ca3e0d.mp3"}},{"start":85.037,"end":100.003,"bars":8,"loop_end":14.966,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"06_Exit_B/p2-drums-53e058.mp3","piano":"06_Exit_B/p2-piano-221726.mp3","synth":"06_Exit_B/p2-synth-380970.mp3"}},{"start":129.649,"end":144.446,"bars":8,"loop_end":14.797,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"06_Exit_B/p3-drums-b1f544.mp3","piano":"06_Exit_B/p3-piano-8e6c6d.mp3","synth":"06_Exit_B/p3-synth-80d63a.mp3"}},{"start":171.961,"end":186.236,"bars":7.5,"loop_end":14.275,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"06_Exit_B/p4-drums-1b97d3.mp3","piano":"06_Exit_B/p4-piano-172c38.mp3","synth":"06_Exit_B/p4-synth-33d112.mp3"}}]},{"id":"07_Asperges","title":"Asperges","key":"D major","meter":4,"tempo":117.45,"bar_seconds":1.997,"parts":[{"start":8.052,"end":16.045,"bars":4,"loop_end":7.993,"offset":0.1,"playing":["bass","piano"],"all":false,"files":{"drums":"07_Asperges/p1-drums-bca254.mp3","bass":"07_Asperges/p1-bass-77228f.mp3","piano":"07_Asperges/p1-piano-b5cd06.mp3","synth":"07_Asperges/p1-synth-f03c88.mp3"}},{"start":73.009,"end":81.02,"bars":4,"loop_end":8.011,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"07_Asperges/p2-drums-d4bc94.mp3","bass":"07_Asperges/p2-bass-4bfc7c.mp3","piano":"07_Asperges/p2-piano-b63055.mp3","synth":"07_Asperges/p2-synth-deb377.mp3"}},{"start":161.054,"end":173.058,"bars":6,"loop_end":12.004,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"07_Asperges/p3-drums-7bcb50.mp3","bass":"07_Asperges/p3-bass-e47f80.mp3","piano":"07_Asperges/p3-piano-6e95db.mp3","synth":"07_Asperges/p3-synth-ff3238.mp3"}},{"start":217.049,"end":225.03,"bars":4,"loop_end":7.981,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"07_Asperges/p4-drums-35d05e.mp3","bass":"07_Asperges/p4-bass-6affc7.mp3","piano":"07_Asperges/p4-piano-86bc70.mp3","synth":"07_Asperges/p4-synth-1b44da.mp3"}},{"start":257.138,"end":273.293,"bars":8,"loop_end":16.155,"offset":0.1,"playing":["bass","piano"],"all":false,"files":{"drums":"07_Asperges/p5-drums-003e46.mp3","bass":"07_Asperges/p5-bass-ce2d1e.mp3","piano":"07_Asperges/p5-piano-0def3d.mp3","synth":"07_Asperges/p5-synth-883017.mp3"}}]},{"id":"08_Pinkasol","title":"Pinkasol","key":"G minor","meter":4,"tempo":123.05,"bar_seconds":1.974,"parts":[{"start":24.967,"end":33.048,"bars":4,"loop_end":8.081,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"08_Pinkasol/p1-drums-900d2a.mp3","bass":"08_Pinkasol/p1-bass-4a0355.mp3","piano":"08_Pinkasol/p1-piano-f7cbde.mp3","synth":"08_Pinkasol/p1-synth-d96cc9.mp3"}},{"start":57.011,"end":72.998,"bars":8,"loop_end":15.987,"offset":0.1,"playing":["drums","bass","piano"],"all":true,"files":{"drums":"08_Pinkasol/p2-drums-819425.mp3","bass":"08_Pinkasol/p2-bass-9da36f.mp3","piano":"08_Pinkasol/p2-piano-40f4b7.mp3","synth":"08_Pinkasol/p2-synth-e7736c.mp3"}},{"start":192.731,"end":207.488,"bars":8,"loop_end":14.757,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"08_Pinkasol/p3-drums-7e60d5.mp3","bass":"08_Pinkasol/p3-bass-4bb912.mp3","piano":"08_Pinkasol/p3-piano-cd0ec7.mp3","synth":"08_Pinkasol/p3-synth-290449.mp3"}}]},{"id":"09_Cosmos","title":"Cosmos","key":"Bb minor","meter":4,"tempo":99.38,"bar_seconds":2.438,"parts":[{"start":20.741,"end":25.6,"bars":2,"loop_end":4.859,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"09_Cosmos/p1-drums-652f6c.mp3","piano":"09_Cosmos/p1-piano-2c0f81.mp3","synth":"09_Cosmos/p1-synth-47791e.mp3"}},{"start":147.981,"end":158.656,"bars":4.25,"loop_end":10.675,"offset":0.1,"playing":["piano","synth"],"all":false,"files":{"drums":"09_Cosmos/p2-drums-cb2f6d.mp3","piano":"09_Cosmos/p2-piano-95b759.mp3","synth":"09_Cosmos/p2-synth-191290.mp3"}},{"start":183.409,"end":202.077,"bars":7.75,"loop_end":18.668,"offset":0.1,"playing":["piano","synth"],"all":false,"files":{"drums":"09_Cosmos/p3-drums-dfd6c8.mp3","piano":"09_Cosmos/p3-piano-d52f8f.mp3","synth":"09_Cosmos/p3-synth-e6c1a3.mp3"}},{"start":202.077,"end":221.687,"bars":8,"loop_end":19.61,"offset":0.1,"playing":["piano","synth"],"all":true,"files":{"drums":"09_Cosmos/p4-drums-e151bf.mp3","piano":"09_Cosmos/p4-piano-10d32e.mp3","synth":"09_Cosmos/p4-synth-6ae3be.mp3"}}]},{"id":"10_El_Tigre","title":"El Tigre","key":"G major","meter":4,"tempo":136.0,"bar_seconds":1.788,"parts":[{"start":34.795,"end":39.863,"bars":2.75,"loop_end":5.068,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"10_El_Tigre/p1-drums-5bdb77.mp3","piano":"10_El_Tigre/p1-piano-aeeada.mp3","synth":"10_El_Tigre/p1-synth-d6bd7d.mp3"}},{"start":90.616,"end":105.094,"bars":8,"loop_end":14.478,"offset":0.1,"playing":["drums","piano"],"all":false,"files":{"drums":"10_El_Tigre/p2-drums-feabe1.mp3","piano":"10_El_Tigre/p2-piano-a96ef3.mp3","synth":"10_El_Tigre/p2-synth-02221b.mp3"}},{"start":209.252,"end":216.642,"bars":4,"loop_end":7.39,"offset":0.1,"playing":["drums","piano","synth"],"all":true,"files":{"drums":"10_El_Tigre/p3-drums-00381e.mp3","piano":"10_El_Tigre/p3-piano-e0216c.mp3","synth":"10_El_Tigre/p3-synth-08b7dc.mp3"}}]}],"urls":{"01_Rototo/p1-drums-82ef5d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_drums_82ef5d_f99d1ead03.mp3","01_Rototo/p1-bass-4a932d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_bass_4a932d_8bd31a0378.mp3","01_Rototo/p1-piano-5a8667.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_piano_5a8667_ce0184b218.mp3","01_Rototo/p1-synth-860a2d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p1_synth_860a2d_5845b42289.mp3","01_Rototo/p2-drums-564eab.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_drums_564eab_d2f86d655a.mp3","01_Rototo/p2-bass-f79803.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_bass_f79803_498ccd34b9.mp3","01_Rototo/p2-piano-e13381.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_piano_e13381_e17bee9d88.mp3","01_Rototo/p2-synth-50d08d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p2_synth_50d08d_979bb84ba8.mp3","01_Rototo/p3-drums-034603.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_drums_034603_dee8daff33.mp3","01_Rototo/p3-bass-0a07b2.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_bass_0a07b2_335982bd17.mp3","01_Rototo/p3-piano-3fe76c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_piano_3fe76c_9d1ee353ec.mp3","01_Rototo/p3-synth-b4b08c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p3_synth_b4b08c_c50ab5d985.mp3","01_Rototo/p4-drums-850770.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_drums_850770_865e9e51d0.mp3","01_Rototo/p4-bass-a55188.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_bass_a55188_d7864bf6b4.mp3","01_Rototo/p4-piano-3b9e3a.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_piano_3b9e3a_46dbcf2374.mp3","01_Rototo/p4-synth-720d22.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_01_Rototo_p4_synth_720d22_083394527a.mp3","02_Arroyoyo/p1-drums-e454e8.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_drums_e454e8_d08319ba5a.mp3","02_Arroyoyo/p1-bass-1df11f.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_bass_1df11f_78bd79b34e.mp3","02_Arroyoyo/p1-piano-682904.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_piano_682904_d53a513694.mp3","02_Arroyoyo/p1-synth-7ae979.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p1_synth_7ae979_2623d5908c.mp3","02_Arroyoyo/p2-drums-4ea926.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_drums_4ea926_d8fd88105d.mp3","02_Arroyoyo/p2-bass-b27417.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_bass_b27417_b219228331.mp3","02_Arroyoyo/p2-piano-8ae0e7.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_piano_8ae0e7_15c4d5db9b.mp3","02_Arroyoyo/p2-synth-528785.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p2_synth_528785_97d14c92f2.mp3","02_Arroyoyo/p3-drums-392886.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_drums_392886_e24ae36cd7.mp3","02_Arroyoyo/p3-bass-0a7e13.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_bass_0a7e13_649d8781fa.mp3","02_Arroyoyo/p3-piano-5acc2f.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_piano_5acc2f_ab538d53b7.mp3","02_Arroyoyo/p3-synth-a1a2e2.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p3_synth_a1a2e2_0725adc8e1.mp3","02_Arroyoyo/p4-drums-0feeb2.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_drums_0feeb2_1392694a28.mp3","02_Arroyoyo/p4-bass-e5edd1.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_bass_e5edd1_96bb1f46f9.mp3","02_Arroyoyo/p4-piano-34702d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_piano_34702d_b671cbde79.mp3","02_Arroyoyo/p4-synth-efa523.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_02_Arroyoyo_p4_synth_efa523_bad130e63c.mp3","03_Clarita/p1-drums-f98d55.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p1_drums_f98d55_74b545ad55.mp3","03_Clarita/p1-piano-582627.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p1_piano_582627_62e265d691.mp3","03_Clarita/p1-synth-fb6b15.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p1_synth_fb6b15_3d09b5bb57.mp3","03_Clarita/p2-drums-ed274f.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p2_drums_ed274f_11c33d3c18.mp3","03_Clarita/p2-piano-5c5da5.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p2_piano_5c5da5_4125f96b96.mp3","03_Clarita/p2-synth-91ecc4.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p2_synth_91ecc4_a9a549d08d.mp3","03_Clarita/p3-drums-b14946.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p3_drums_b14946_8a922a6659.mp3","03_Clarita/p3-piano-589bd3.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p3_piano_589bd3_990494f2e7.mp3","03_Clarita/p3-synth-3600f4.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p3_synth_3600f4_0bd03a817f.mp3","03_Clarita/p4-drums-2750d3.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p4_drums_2750d3_5fda129e53.mp3","03_Clarita/p4-piano-b10aa5.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p4_piano_b10aa5_df09982fd3.mp3","03_Clarita/p4-synth-ffa631.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p4_synth_ffa631_6a533f6982.mp3","03_Clarita/p5-drums-d7b1fb.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p5_drums_d7b1fb_37934845bd.mp3","03_Clarita/p5-piano-904b36.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p5_piano_904b36_6d4faf4db0.mp3","03_Clarita/p5-synth-de800c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_03_Clarita_p5_synth_de800c_756d193ceb.mp3","04_Noisette/p1-drums-180bd4.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_drums_180bd4_5f38f6740c.mp3","04_Noisette/p1-bass-478928.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_bass_478928_4cebc6fc02.mp3","04_Noisette/p1-piano-d45098.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_piano_d45098_f4e36967b8.mp3","04_Noisette/p1-synth-2a6f40.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p1_synth_2a6f40_7c392605b9.mp3","04_Noisette/p2-drums-bca571.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_drums_bca571_91594d0c4a.mp3","04_Noisette/p2-bass-d170ca.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_bass_d170ca_fc58506830.mp3","04_Noisette/p2-piano-bf9f2c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_piano_bf9f2c_d7095924b2.mp3","04_Noisette/p2-synth-e88afa.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p2_synth_e88afa_9ed10d18af.mp3","04_Noisette/p3-drums-fb1a1b.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_drums_fb1a1b_6ee39937ff.mp3","04_Noisette/p3-bass-08bc51.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_bass_08bc51_dc26e652dd.mp3","04_Noisette/p3-piano-8da610.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_piano_8da610_7650baab60.mp3","04_Noisette/p3-synth-8aca33.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p3_synth_8aca33_2a698a69f3.mp3","04_Noisette/p4-drums-94bd92.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_drums_94bd92_59297f0c76.mp3","04_Noisette/p4-bass-2166b3.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_bass_2166b3_ab22eb6126.mp3","04_Noisette/p4-piano-2922fc.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_piano_2922fc_9ef9f494b7.mp3","04_Noisette/p4-synth-d3cb1d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p4_synth_d3cb1d_6603c86752.mp3","04_Noisette/p5-drums-c00072.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_drums_c00072_f74669a9f4.mp3","04_Noisette/p5-bass-a61268.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_bass_a61268_2f8f9e17e2.mp3","04_Noisette/p5-piano-53e4b5.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_piano_53e4b5_eb7a19d9c0.mp3","04_Noisette/p5-synth-871559.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_04_Noisette_p5_synth_871559_cd43c2880d.mp3","05_Malavista/p1-drums-cdfdca.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_drums_cdfdca_d42098cfbe.mp3","05_Malavista/p1-bass-d88ab5.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_bass_d88ab5_141302fbfb.mp3","05_Malavista/p1-piano-9fcf41.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_piano_9fcf41_d017aaf95c.mp3","05_Malavista/p1-synth-7f6de8.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p1_synth_7f6de8_087f79e190.mp3","05_Malavista/p2-drums-ce3f1a.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_drums_ce3f1a_2880b22248.mp3","05_Malavista/p2-bass-6dc310.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_bass_6dc310_9494df404b.mp3","05_Malavista/p2-piano-0ee74b.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_piano_0ee74b_d28af6ba33.mp3","05_Malavista/p2-synth-035dfe.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p2_synth_035dfe_2b060776bc.mp3","05_Malavista/p3-drums-b5b3fa.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_drums_b5b3fa_713762c6fc.mp3","05_Malavista/p3-bass-e00fe4.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_bass_e00fe4_179982ebd4.mp3","05_Malavista/p3-piano-de6d26.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_piano_de6d26_c98127300c.mp3","05_Malavista/p3-synth-bd4c8b.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_05_Malavista_p3_synth_bd4c8b_940d46f914.mp3","06_Exit_B/p1-drums-c8ec65.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p1_drums_c8ec65_e044415860.mp3","06_Exit_B/p1-piano-cdd03a.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p1_piano_cdd03a_e8197facb2.mp3","06_Exit_B/p1-synth-ca3e0d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p1_synth_ca3e0d_10e4380c25.mp3","06_Exit_B/p2-drums-53e058.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p2_drums_53e058_b6f16a6f80.mp3","06_Exit_B/p2-piano-221726.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p2_piano_221726_88d972a071.mp3","06_Exit_B/p2-synth-380970.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p2_synth_380970_49e15e15bc.mp3","06_Exit_B/p3-drums-b1f544.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p3_drums_b1f544_140a625317.mp3","06_Exit_B/p3-piano-8e6c6d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p3_piano_8e6c6d_4464242a2e.mp3","06_Exit_B/p3-synth-80d63a.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p3_synth_80d63a_c643861a23.mp3","06_Exit_B/p4-drums-1b97d3.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p4_drums_1b97d3_b0b2a8d320.mp3","06_Exit_B/p4-piano-172c38.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p4_piano_172c38_210e0037f4.mp3","06_Exit_B/p4-synth-33d112.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_06_Exit_B_p4_synth_33d112_b72082c945.mp3","07_Asperges/p1-drums-bca254.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_drums_bca254_d6087ceb29.mp3","07_Asperges/p1-bass-77228f.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_bass_77228f_6c4d2e2640.mp3","07_Asperges/p1-piano-b5cd06.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_piano_b5cd06_f7bca1c014.mp3","07_Asperges/p1-synth-f03c88.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p1_synth_f03c88_b969746a66.mp3","07_Asperges/p2-drums-d4bc94.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_drums_d4bc94_d6cd6e1151.mp3","07_Asperges/p2-bass-4bfc7c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_bass_4bfc7c_5ccfab42b2.mp3","07_Asperges/p2-piano-b63055.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_piano_b63055_0829bb44cf.mp3","07_Asperges/p2-synth-deb377.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p2_synth_deb377_a6970e3175.mp3","07_Asperges/p3-drums-7bcb50.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_drums_7bcb50_d8460526b4.mp3","07_Asperges/p3-bass-e47f80.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_bass_e47f80_147fca9445.mp3","07_Asperges/p3-piano-6e95db.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_piano_6e95db_dc32622926.mp3","07_Asperges/p3-synth-ff3238.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p3_synth_ff3238_342ee840a4.mp3","07_Asperges/p4-drums-35d05e.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_drums_35d05e_9aa33ad6c0.mp3","07_Asperges/p4-bass-6affc7.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_bass_6affc7_92b1383d63.mp3","07_Asperges/p4-piano-86bc70.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_piano_86bc70_093d6f6426.mp3","07_Asperges/p4-synth-1b44da.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p4_synth_1b44da_5f2cf0e93f.mp3","07_Asperges/p5-drums-003e46.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_drums_003e46_933289316d.mp3","07_Asperges/p5-bass-ce2d1e.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_bass_ce2d1e_dda71c5106.mp3","07_Asperges/p5-piano-0def3d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_piano_0def3d_78f7c2d8cd.mp3","07_Asperges/p5-synth-883017.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_07_Asperges_p5_synth_883017_5c9a7205b4.mp3","08_Pinkasol/p1-drums-900d2a.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_drums_900d2a_bd69942ec9.mp3","08_Pinkasol/p1-bass-4a0355.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_bass_4a0355_ddc1a3610a.mp3","08_Pinkasol/p1-piano-f7cbde.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_piano_f7cbde_2566186b63.mp3","08_Pinkasol/p1-synth-d96cc9.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p1_synth_d96cc9_93fa4bc28a.mp3","08_Pinkasol/p2-drums-819425.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_drums_819425_c1421bbc0e.mp3","08_Pinkasol/p2-bass-9da36f.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_bass_9da36f_300d408c13.mp3","08_Pinkasol/p2-piano-40f4b7.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_piano_40f4b7_230a8c9d3e.mp3","08_Pinkasol/p2-synth-e7736c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p2_synth_e7736c_8bd68bed3c.mp3","08_Pinkasol/p3-drums-7e60d5.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_drums_7e60d5_bc461d849e.mp3","08_Pinkasol/p3-bass-4bb912.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_bass_4bb912_f6c69aed83.mp3","08_Pinkasol/p3-piano-cd0ec7.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_piano_cd0ec7_def47a0472.mp3","08_Pinkasol/p3-synth-290449.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_08_Pinkasol_p3_synth_290449_f5c63bcd1e.mp3","09_Cosmos/p1-drums-652f6c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p1_drums_652f6c_ff5b8ce170.mp3","09_Cosmos/p1-piano-2c0f81.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p1_piano_2c0f81_8d26b6d268.mp3","09_Cosmos/p1-synth-47791e.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p1_synth_47791e_92d034546e.mp3","09_Cosmos/p2-drums-cb2f6d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p2_drums_cb2f6d_1e259164de.mp3","09_Cosmos/p2-piano-95b759.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p2_piano_95b759_5b0060877a.mp3","09_Cosmos/p2-synth-191290.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p2_synth_191290_369c2e31d9.mp3","09_Cosmos/p3-drums-dfd6c8.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p3_drums_dfd6c8_7793fa2f9e.mp3","09_Cosmos/p3-piano-d52f8f.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p3_piano_d52f8f_e47dd72cc0.mp3","09_Cosmos/p3-synth-e6c1a3.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p3_synth_e6c1a3_440ceb8da2.mp3","09_Cosmos/p4-drums-e151bf.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p4_drums_e151bf_8e05b9878b.mp3","09_Cosmos/p4-piano-10d32e.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p4_piano_10d32e_ce7ea27f52.mp3","09_Cosmos/p4-synth-6ae3be.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_09_Cosmos_p4_synth_6ae3be_260b77e1ba.mp3","10_El_Tigre/p1-drums-5bdb77.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p1_drums_5bdb77_a97e008106.mp3","10_El_Tigre/p1-piano-aeeada.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p1_piano_aeeada_1bef712f37.mp3","10_El_Tigre/p1-synth-d6bd7d.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p1_synth_d6bd7d_4c3fd0af35.mp3","10_El_Tigre/p2-drums-feabe1.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p2_drums_feabe1_03fe21f059.mp3","10_El_Tigre/p2-piano-a96ef3.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p2_piano_a96ef3_4d64608139.mp3","10_El_Tigre/p2-synth-02221b.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p2_synth_02221b_448ab75b5d.mp3","10_El_Tigre/p3-drums-00381e.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p3_drums_00381e_10b010ec0d.mp3","10_El_Tigre/p3-piano-e0216c.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p3_piano_e0216c_458369609c.mp3","10_El_Tigre/p3-synth-08b7dc.mp3":"https://media.tilefolio.com/i1/pinkasol_tile_10_El_Tigre_p3_synth_08b7dc_3aa54d5ce2.mp3"}};
 </script>
 </head>
 <body>
@@ -422,10 +426,11 @@ const PINKASOL_MANIFEST = {"palette":{"blue":"#174596","paper":"#fdfdfd","orange
 // and drags (mouse and touch). Parts are numbered in song order; a row only
 // offers the parts where its instruments really play (manifest `playing`).
 const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', FADED = '#7f97c7', DIM = '#b9c6e2';
-let INK = PAPER; // the instruments' paper: faded while silent or muted
+let INK = PAPER, INK0 = PAPER; // the instruments' paper: faded while silent or muted
 // p5 wraps the name in quotes: close and reopen them to pass a fallback list
 const FONT = 'Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif, "x';
-const INSTS = ['piano', 'drums', 'synth', 'bass'];
+// Left to right: the drums first (owner, 2026-11-22)
+const INSTS = ['drums', 'piano', 'synth', 'bass'];
 const NAMES = { piano: 'PIANO', drums: 'BATTERIE', synth: 'SYNTHÉ', bass: 'BASSE' };
 const ARTICLE = { piano: 'le piano', drums: 'la batterie', synth: 'le synthé', bass: 'la basse' };
 const DEFAULT_TRACK = '08_Pinkasol';
@@ -438,6 +443,8 @@ let eng = null, loadError = null, started = false;
 let running = false, opSeq = 0, tempoOn = true, keyOn = true;
 let hint = HINT0, hintUntil = 0, tempHint = '';
 const VOL_MAX = 1.2;
+// An instrument's spot by name (never by position: the order can change)
+const spotOf = (inst) => spots.find((s) => s.inst === inst);
 const spots = INSTS.map((inst, i) => ({ inst, i, track: null, part: 0, muted: false, vol: 1, voice: null, pending: 0,
   cx: 0, cy: 0, w: 0, h: 0, pulse: 0, shake: 0 }));
 let cards = [];
@@ -534,12 +541,27 @@ function drawInstrument(inst, r, seed) {
     fill(INK);
     roughEllipse(0, 0.3 * r, 0.11 * r, 0.11 * r, seed + 12, a * 0.5);
   } else if (inst === 'synth') {
+    // narrower than the piano, fewer keys, a few knobs and faders (owner,
+    // 2026-11-22): the two read apart
     fill(INK);
-    roughShape([[-0.98 * r, -0.2 * r], [0.98 * r, -0.42 * r], [0.98 * r, 0.42 * r], [-0.98 * r, 0.42 * r]], seed, a);
+    roughShape([[-0.8 * r, -0.22 * r], [0.8 * r, -0.42 * r], [0.8 * r, 0.42 * r], [-0.8 * r, 0.42 * r]], seed, a);
     fill(BLUE);
-    for (let i = 0; i < 6; i++) roughEllipse((-0.8 + i * 0.2) * r, (-0.1 - i * 0.022) * r, 0.065 * r, 0.065 * r, seed + 30 + i, a * 0.4);
-    for (let i = 0; i < 3; i++) roughRect((0.45 + i * 0.16) * r, (-0.3 + i * 0.01) * r, 0.05 * r, 0.24 * r, seed + 40 + i, a * 0.4);
-    keys(-0.9 * r, 0.06 * r, 1.8 * r, 0.3 * r, 17, seed + 60, a);
+    // 4 knobs, each with its notch
+    for (let i = 0; i < 4; i++) {
+      const kx = (-0.62 + i * 0.19) * r, ky = (-0.1 - i * 0.022) * r;
+      roughEllipse(kx, ky, 0.075 * r, 0.075 * r, seed + 30 + i, a * 0.4);
+      push(); fill(INK); translate(kx, ky); rotate(-0.9 + i * 0.55);
+      rect(-0.012 * r, -0.07 * r, 0.024 * r, 0.045 * r);
+      pop();
+    }
+    // 4 faders: slots and their caps
+    const caps = [0.35, 0.65, 0.2, 0.5];
+    for (let i = 0; i < 4; i++) {
+      const fx = (0.18 + i * 0.15) * r, top = (-0.33 + i * 0.012) * r, h = 0.27 * r;
+      rect(fx - 0.014 * r, top, 0.028 * r, h);
+      roughRect(fx - 0.05 * r, top + caps[i] * h - 0.025 * r, 0.1 * r, 0.05 * r, seed + 40 + i, a * 0.3);
+    }
+    keys(-0.74 * r, 0.06 * r, 1.48 * r, 0.3 * r, 12, seed + 60, a);
   } else if (inst === 'bass') {
     push();
     rotate(-0.62);
@@ -635,7 +657,7 @@ function pieceFor(s) {
 }
 // The key switch: the synth (only it) moved to the piano's key, in semitones
 function synthShift() {
-  const piano = spots[0].track, synth = spots[2].track;
+  const piano = spotOf('piano').track, synth = spotOf('synth').track;
   if (!keyOn || !piano || !synth || piano === synth) return 0;
   return eng.keyShift(eng.byId[synth].key, eng.byId[piano].key);
 }
@@ -703,7 +725,7 @@ function startTable(extra = []) {
   // switch is on), every instrument aligned
   return launch(occupied(), extra, true);
 }
-const drumsOn = (id) => spots[1].track === id;
+const drumsOn = (id) => spotOf('drums').track === id;
 function stopTable() {
   running = false;
   opSeq++;
@@ -746,6 +768,15 @@ function silence(s) {
   else if (keyOn && running && (s.inst === 'piano' || s.inst === 'synth')) startTable(); // the synth's key
   refit(before);
   layout();
+}
+// The one switch: tempo matched to the drums AND the synth keyed to the
+// piano, or both free
+function toggleAlign() {
+  const on = !(tempoOn && keyOn);
+  tempoOn = keyOn = on;
+  eng.tempoMatch = on;
+  if (running) startTable();
+  say(on ? 'Aligné : tempo de la batterie, synthé dans le ton du piano' : 'Libres : chacun son tempo et sa tonalité');
 }
 // The key switch: free, or the synth moved to the piano's key
 function toggleKey() {
@@ -855,13 +886,17 @@ function rowSpec(id, colW) {
   return { id, stagger, h: stagger ? 96 : 52 };
 }
 function layout() {
+  if (isCompact()) return layoutCompact();
+  L.compact = false;
+  const back = document.getElementById('back');
+  if (back) back.style.display = '';
   const W = width, H = height;
   pad = Math.max(8, Math.min(W, H) * 0.022);
   const portrait = H > W && W < 700;
   const shortH = H < 520;
   const wideSpots = W >= 640 && W / H >= 1.05;
   L.portrait = portrait;
-  const top = portrait ? 42 : 66;
+  let top = portrait ? 42 : 66;
   const bottomBar = portrait ? 100 : 0;
   const g = Math.max(6, W * 0.012);
   // cards
@@ -889,8 +924,15 @@ function layout() {
   textSize(12); textStyle(BOLD);
   L.hintLines = textWidth(HINT1.toUpperCase()) > W - 24 ? 2 : 1;
   const hintH = L.hintLines === 2 ? 36 : 24;
-  const spotsH = Math.max(90, H - top - bottomBar - deckH - pad - stripH - hintH - 10);
-  const cols = wideSpots ? 4 : 2, rws = wideSpots ? 1 : 2;
+  let spotsH = Math.max(90, H - top - bottomBar - deckH - pad - stripH - hintH - 10);
+  // one row of instruments needs no more height than its width gives: the
+  // rest goes around the page (centred), not into a tall empty row
+  const rowMax = ((W - 2 * pad) / 4) * 0.9 + 60;
+  if (spotsH > rowMax) { top += (spotsH - rowMax) / 2; spotsH = rowMax; }
+  // the instruments: always one row of four; a volume slider beside each
+  // only when there is room for it
+  const cols = 4, rws = 1;
+  L.sliders = (W - 2 * pad) / 4 * 0.92 >= 200;
   const cw = (W - 2 * pad) / cols, chh = spotsH / rws;
   spots.forEach((s, i) => {
     const c = i % cols, r = Math.floor(i / cols);
@@ -911,9 +953,10 @@ function layout() {
     buttons.tempo = { x: pad, y: by - 44, w: sw.w, h: 44, pill: 'left' };
     buttons.key = { x: pad, y: by, w: sw.w, h: 44, pill: 'left' };
   } else {
-    buttons.tempo = { x: buttons.play.x - 300, y: by - 22, w: 250, h: 44, pill: 'right' };
+    // one switch: tempo and key aligned (or both free), right of the face
     const kx = buttons.dice.x + 100;
-    buttons.key = { x: kx, y: by - 22, w: Math.min(300, W - pad - kx), h: 44, pill: 'left' };
+    buttons.tempo = { x: kx, y: by - 22, w: Math.min(320, W - pad - kx), h: 44, pill: 'left' };
+    buttons.key = { x: -999, y: -999, w: 0, h: 0 };
   }
   const y0 = hintY + hintH / 2 + 2;
   cards.forEach((c, i) => {
@@ -921,6 +964,214 @@ function layout() {
     c.x = pad + (i % perRow) * (cardW + g);
     c.y = y0 + Math.floor(i / perRow) * (cardH + g);
   });
+}
+
+// ---------- compact mode (a small canvas: the tile on the wall, a phone) ----------
+// Four big instruments (tap: mute), ten round song tokens (tap: the whole
+// song on a random part, again: its next part; drag onto an instrument: that
+// instrument plays it), play/stop and the random face. No strip, no
+// switches (they stay on), no sliders, one short line of hint
+const SHORT_HINT = 'Touchez une chanson · glissez-la sur un instrument';
+const isCompact = () => width < 600 || height < 520;
+let compactIssues = []; // texts that would not fit (tests)
+
+function layoutCompact() {
+  const W = width, H = height;
+  L.compact = true;
+  chips.length = 0;
+  pad = 8;
+  const back = document.getElementById('back');
+  if (back) back.style.display = 'none';
+  // bottom bar: play/stop and the random face, >= 48 px
+  const bb = H < 420 ? 58 : 76;
+  const by = H - bb / 2;
+  buttons.play = { x: W / 2 - 42, y: by, r: 24 };
+  buttons.dice = { x: W / 2 + 34, y: by, r: 22 };
+  buttons.tempo = { x: -999, y: -999, w: 0, h: 0 };
+  buttons.key = { x: -999, y: -999, w: 0, h: 0 };
+  // tokens: one row of 10 when there is room, else two rows of 5
+  const perRow = (W - 2 * pad) / 10 >= 56 ? 10 : 5;
+  const rows = 10 / perRow;
+  const slot = (W - 2 * pad) / perRow;
+  let d = Math.max(44, Math.min(slot - 8, 64, (H * (rows === 1 ? 0.17 : 0.13))));
+  // titles under the tokens: only if every title fits whole at >= 11 px,
+  // and the instruments keep at least 40 % of the height
+  textStyle(BOLD);
+  let ts = Math.min(13, Math.max(11, d * 0.24));
+  textSize(ts);
+  while (ts > 11 && cards.some((c) => textWidth(c.title) > slot - 4)) { ts -= 0.5; textSize(ts); }
+  const titlesFit = cards.length && cards.every((c) => textWidth(c.title) <= slot - 4);
+  // the short hint: one line, or nothing
+  textSize(12);
+  const hintH = textWidth(SHORT_HINT.toUpperCase()) <= W - 2 * pad ? 20 : 0;
+  const tokensH = (titles) => rows * (d + (titles ? ts + 6 : 0)) + (rows - 1) * 6;
+  let titles = titlesFit && H - bb - tokensH(true) - hintH - 3 * pad >= H * 0.4;
+  L.tokTitles = titles; L.tokSize = ts; L.tokD = d;
+  const tokTop = H - bb - pad - tokensH(titles);
+  const cellH = d + (titles ? ts + 6 : 0);
+  cards.forEach((c, i) => {
+    c.w = slot; c.h = cellH;
+    c.x = pad + (i % perRow) * slot;
+    c.y = tokTop + Math.floor(i / perRow) * (cellH + 6);
+  });
+  hintY = tokTop - hintH / 2 - 2;
+  L.hintH = hintH;
+  // instruments: one row of four, as tall as their width allows, centred
+  // in what is left
+  const avail = tokTop - hintH - 4 - pad;
+  const cw = (W - 2 * pad) / 4;
+  const ch = Math.min(avail, cw * 1.25 + 24);
+  // the whole composition centred: what the instruments don't use goes
+  // half above them, half under the buttons
+  const dy = (avail - ch) / 2;
+  const instTop = pad + dy;
+  spots.forEach((s, i) => {
+    s.w = cw - 6; s.h = ch - 6;
+    s.cx = pad + cw * (i + 0.5);
+    s.cy = instTop + ch / 2;
+  });
+  cards.forEach((c) => { c.y -= dy; });
+  hintY -= dy;
+  buttons.play.y -= dy; buttons.dice.y -= dy;
+}
+
+function drawCompact() {
+  background(BLUE);
+  noStroke();
+  chips.length = 0;
+  compactIssues = [];
+  spots.forEach(drawSpotCompact);
+  drawButtons();
+  if (L.hintH) {
+    fill(PAPER); textAlign(CENTER, CENTER); textStyle(BOLD); textSize(12);
+    const h = millis() < hintUntil && textWidth(tempHint.toUpperCase()) <= width - 2 * pad ? tempHint : SHORT_HINT;
+    text(h.toUpperCase(), width / 2, hintY);
+  }
+  if (!eng) {
+    fill(PAPER); textSize(14); textAlign(CENTER, CENTER);
+    text(loadError ? 'ERREUR : ' + loadError : 'CHARGEMENT…', width / 2, height * 0.75);
+    return;
+  }
+  const single = singleSong();
+  for (const c of cards) {
+    if (drag && drag.card === c && !drag.from && drag.moved) {
+      fill(255, 255, 255, 40); ellipse(c.x + c.w / 2, c.y + L.tokD / 2, L.tokD);
+      continue;
+    }
+    if (anims.some((a) => a.card === c)) continue;
+    c.shake *= 0.9;
+    drawToken(c, c.x + c.w / 2 + Math.sin(frameCount * 0.6) * c.shake * 3, c.y + L.tokD / 2, L.tokD, false, c.id === single);
+  }
+  for (let i = anims.length - 1; i >= 0; i--) {
+    const a = anims[i];
+    a.t = Math.min(1, a.t + 0.12);
+    const e = 1 - Math.pow(1 - a.t, 3);
+    const c = a.card;
+    drawToken(c, lerp(a.x + c.w / 2, c.x + c.w / 2, e), lerp(a.y + L.tokD / 2, c.y + L.tokD / 2, e), L.tokD, false, false);
+    if (a.t >= 1) anims.splice(i, 1);
+  }
+  if (drag && drag.moved && drag.card) {
+    drawToken(drag.card, drag.x, drag.y - L.tokD * 0.2, L.tokD * 1.1, true, false);
+  }
+}
+
+// The song holding the whole table (every occupied instrument), if any
+function singleSong() {
+  const on = occupied();
+  return on.length && on.every((s) => s.track === on[0].track) ? on[0].track : null;
+}
+
+function drawToken(c, x, y, d, lifted, current) {
+  push();
+  translate(x, y);
+  if (lifted) { fill(0, 0, 0, 50); ellipse(4, 6, d, d); }
+  const on = spots.some((s) => s.track === c.id);
+  if (current) { fill(ORANGE); roughEllipse(0, 0, d / 2 + 4, d / 2 + 4, 400 + c.i, 1); }
+  fill(PAPER);
+  roughEllipse(0, 0, d / 2, d / 2, 420 + c.i * 3, Math.max(0.8, d * 0.02));
+  motif(c.i, 0, 0, d * 0.3, 700 + c.i * 17);
+  if (on && !current) { fill(ORANGE); star(d * 0.36, -d * 0.36, d * 0.13, 40 + c.i); }
+  pop();
+  if (L.tokTitles && !lifted) {
+    fill(PAPER); textAlign(CENTER, TOP); textStyle(BOLD); textSize(L.tokSize);
+    if (textWidth(c.title) > c.w - 4) compactIssues.push('token ' + c.title);
+    text(c.title, x, y + d / 2 + 4);
+  }
+}
+
+function drawSpotCompact(s) {
+  const lh = 18; // the song's line under the drawing
+  const area = s.h - lh - 4;
+  const r = Math.min(s.w * 0.42, area * 0.42);
+  const on = !!(s.track && running);
+  const lv = on && s.voice && s.voice.ready ? s.voice.level() : 0;
+  s.pulse = lerp(s.pulse, lv, 0.35);
+  s.shake *= 0.88;
+  const top = s.cy - s.h / 2;
+  const cy = top + area - 0.86 * r - 2; // the cat's head above
+  const hovered = drag && drag.moved && drag.card && spotAt(drag.x, drag.y) === s;
+  if (hovered) {
+    fill(accepts(s, drag.card.id) ? ORANGE : 'rgba(253,253,253,0.25)');
+    roughRect(s.cx - s.w / 2, top, s.w, s.h, 300 + s.i * 7, 2);
+    fill(BLUE);
+    roughRect(s.cx - s.w / 2 + 4, top + 4, s.w - 8, s.h - 8, 310 + s.i * 7, 2);
+  }
+  if (s.track && s.muted) {
+    noFill(); stroke(FADED); strokeWeight(2);
+    drawingContext.setLineDash([6, 6]);
+    rect(s.cx - s.w / 2 + 2, top + 2, s.w - 4, s.h - 4, 4);
+    drawingContext.setLineDash([]);
+    noStroke();
+  }
+  const quiet = s.track && !plays(s.track, s.part, s.inst);
+  push();
+  translate(s.cx + Math.sin(frameCount * 0.7) * s.shake * 3, cy);
+  scale(1 + s.pulse * 0.08);
+  INK = !s.track || s.muted ? FADED : quiet ? DIM : PAPER;
+  INK0 = INK; drawCat(s, r, 'back'); INK = INK0;
+  drawInstrument(s.inst, r, 100 + s.i * 31);
+  INK = PAPER;
+  instrumentStars(s, r, on && !s.muted, lv);
+  drawCat(s, r, 'front');
+  pop();
+  // the song it plays: motif, title, part; else the instrument's name
+  const y = top + s.h - lh / 2 - 1;
+  textStyle(BOLD); textAlign(LEFT, CENTER);
+  let ts = 13; textSize(ts);
+  const draggingFromHere = drag && drag.moved && drag.from === s;
+  if (s.track && !draggingFromHere) {
+    const c = cardById(s.track);
+    const label = `${c.title} · ${s.part + 1}`;
+    const badge = 16;
+    while (ts > 11 && textWidth(label) + badge + 4 > s.w) { ts -= 0.5; textSize(ts); }
+    const withBadge = textWidth(label) + badge + 4 <= s.w;
+    const tw = textWidth(label) + (withBadge ? badge + 4 : 0);
+    if (tw > s.w) compactIssues.push('spot ' + label);
+    let x = s.cx - tw / 2;
+    if (withBadge) {
+      fill(s.muted ? FADED : PAPER); roughEllipse(x + badge / 2, y, badge / 2, badge / 2, 600 + c.i, 0.6);
+      motif(c.i, x + badge / 2, y, badge * 0.32, 700 + c.i * 17);
+      x += badge + 4;
+    }
+    fill(s.muted ? FADED : PAPER);
+    text(label, x, y);
+  } else {
+    fill(FADED); textAlign(CENTER, CENTER);
+    text(NAMES[s.inst], s.cx, y);
+  }
+}
+
+// A tap on a token: the whole song on a random part; the song already on
+// the table: its next part (right away)
+function tapToken(id) {
+  if (singleSong() === id) {
+    const ks = offered(id);
+    const cur = spots.find((s) => s.track === id).part;
+    const k = ks[(ks.indexOf(cur) + 1) % ks.length] ?? 0;
+    say(`${eng.byId[id].title} : partie ${k + 1}`);
+    return choosePart(id, k);
+  }
+  wholeTrack(id);
 }
 
 // ---------- p5 ----------
@@ -948,12 +1199,13 @@ function setup() {
     layout();
   }).catch((err) => { loadError = String(err); console.error(err); });
   window.spots = spots;
-  window.table = { get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
+  window.table = { toggleAlign, get sliders() { return !!L.sliders; }, get compact() { return !!L.compact; }, get issues() { return compactIssues; }, singleSong, tapToken, get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
   layout();
 }
 function windowResized() { resizeCanvas(windowWidth, windowHeight); layout(); }
 
 function draw() {
+  if (L.compact) return drawCompact();
   background(BLUE);
   noStroke();
   spots.forEach(drawSpot);
@@ -1062,10 +1314,14 @@ function drawButtons() {
 }
 
 function drawTempoSwitch() {
+  if (L.compact) return; // the switch stays on, unseen
+  drawSwitch(buttons.tempo, tempoOn && keyOn, 950, 'TEMPO ET TONALITÉ :', 'ALIGNÉS', 'ALIGNÉS', 'LIBRES');
+}
+function drawTwoSwitches() {
   drawSwitch(buttons.tempo, tempoOn, 950, 'TEMPO :', 'CALÉ SUR LA BATTERIE', 'CALÉ BATTERIE');
   drawSwitch(buttons.key, keyOn, 970, 'TONALITÉ :', 'SYNTHÉ ACCORDÉ AU PIANO', 'SYNTHÉ → PIANO');
 }
-function drawSwitch(t, on, seed, l1, onLong, onShort) {
+function drawSwitch(t, on, seed, l1, onLong, onShort, offLabel = 'LIBRE') {
   const pw = 44, ph = 24;
   const px = t.pill === 'left' ? t.x : t.x + t.w - pw;
   const py = t.y + (t.h - ph) / 2;
@@ -1074,7 +1330,7 @@ function drawSwitch(t, on, seed, l1, onLong, onShort) {
   fill(PAPER);
   roughEllipse(on ? px + pw - 12 : px + 12, py + ph / 2, 9, 9, seed + 10, 0.6);
   fill(PAPER); textStyle(BOLD); textSize(12);
-  const l2 = on ? onLong : 'LIBRE';
+  const l2 = on ? onLong : offLabel;
   if (t.pill === 'left') {
     textAlign(LEFT, CENTER);
     const x = px + pw + 8, room = t.x + t.w - x;
@@ -1107,11 +1363,180 @@ function tempoNote(s) {
 // The cover's orange star, a few around each instrument (unit r: x, y,
 // size). Playing: they beat with the clock and swell with the sound; empty
 // or muted: faint
+// ---------- the cats (one per instrument, playing it) ----------
+// Hand-cut cats after the band's covers (not copies): the pianist is black
+// with a white face mask, the drummer tall and pale blue, the synth player
+// paper-white, the bassist mid-blue. Body and tail behind the instrument,
+// head, arms, paws and the stick in front. Units: the instrument's r
+const CAT_DARK = '#0d1733';
+// Fat cats on the drums and the synth, regular cats on the piano and the
+// bass (owner, 2026-11-22)
+const CATS = {
+  piano: { fur: CAT_DARK, cut: PAPER, line: PAPER, mask: true, head: [0.02, -0.96], body: [0, -0.42, 0.38, 0.6], hr: 0.26 },
+  drums: { fur: '#a9c1ee', cut: BLUE, line: null, head: [0.04, -0.98], body: [0, -0.44, 0.54, 0.58], hr: 0.29 },
+  synth: { fur: PAPER, cut: BLUE, line: null, head: [-0.14, -0.82], body: [-0.14, -0.3, 0.53, 0.5], hr: 0.29 },
+  bass: { fur: '#5b7ecb', cut: PAPER, line: PAPER, head: [-0.42, -0.86], body: [-0.36, -0.24, 0.34, 0.62], hr: 0.26 },
+};
+// What the cat does now: 'sleep' (no song), 'muted' (paws on its ears),
+// 'play', or 'idle' (a song, the table stopped)
+function catMode(s) {
+  if (!s.track) return 'sleep';
+  if (s.muted) return 'muted';
+  return running && s.voice ? 'play' : 'idle';
+}
+function catPen(c, r) {
+  if (c.line) { stroke(c.line); strokeWeight(Math.max(0.8, r * 0.018)); } else noStroke();
+  fill(c.fur);
+}
+function limb(c, r, x1, y1, x2, y2) { // an arm: a thick stroke and a paw
+  // always outlined (cobalt on the light cats): an arm reads over its own fur
+  const w = Math.max(2.2, r * 0.1), edge = c.line || BLUE;
+  stroke(edge); strokeWeight(w + Math.max(1.6, r * 0.036)); line(x1 * r, y1 * r, x2 * r, y2 * r);
+  stroke(c.fur); strokeWeight(w); line(x1 * r, y1 * r, x2 * r, y2 * r);
+  stroke(edge); strokeWeight(Math.max(0.8, r * 0.018));
+  fill(c.fur);
+  ellipse(x2 * r, y2 * r, w * 1.5, w * 1.25);
+  noStroke();
+}
+function drawCat(s, r, layer) {
+  const c = CATS[s.inst];
+  const mode = catMode(s);
+  const lv = mode === 'play' ? Math.min(1, s.pulse * 1.6) : 0;
+  const ph = mode === 'play' && eng ? eng.phase() : null;
+  const beat = ph ? ph.beat : 0, one = ph && ph.n === 0;
+  const t = frameCount;
+  const sway = s.inst === 'bass' && mode === 'play' ? Math.sin(t * 0.09) * 0.05 : 0;
+  push();
+  translate(sway * r, 0);
+  if (layer === 'back') {
+    // the tail: a slow swish asleep, livelier when playing
+    const speed = mode === 'play' ? 0.12 : 0.03;
+    const sw = Math.sin(t * speed + s.i) * (mode === 'play' ? 0.25 : 0.15);
+    const [bx, by, brx, bry] = c.body;
+    noFill();
+    const tw = Math.max(2.5, r * 0.09);
+    const tail = () => bezier((bx + brx * 0.8) * r, (by + bry * 0.6) * r, (bx + brx * 1.6) * r, (by + bry * 0.3) * r,
+      (bx + brx * (1.5 + sw)) * r, (by - bry * 0.6) * r, (bx + brx * (1.2 + sw * 1.5)) * r, (by - bry * 1.0) * r);
+    if (c.line) { stroke(c.line); strokeWeight(tw + Math.max(1.6, r * 0.036)); tail(); }
+    stroke(c.fur); strokeWeight(tw); tail();
+    noStroke();
+    catPen(c, r);
+    roughEllipse(bx * r, by * r * (c.tall || 1), brx * r, bry * r * (c.tall || 1), 1100 + s.i * 9, Math.max(0.6, r * 0.02));
+    noStroke();
+    pop();
+    return;
+  }
+  // front: arms and paws (what each cat does), then the head
+  const [hx0, hy0] = c.head;
+  let hx = hx0, hy = hy0 * (c.tall || 1), tilt = 0;
+  if (mode === 'play') {
+    if (s.inst === 'piano') { // paws tap the keys, one then the other
+      const a = t * 0.38;
+      const lift = (k) => (0.5 + 0.5 * Math.sin(a + k)) * (0.04 + lv * 0.14);
+      limb(c, r, -0.26, -0.6, -0.36, 0.06 - lift(0));
+      limb(c, r, 0.26, -0.6, 0.38, 0.06 - lift(Math.PI));
+    } else if (s.inst === 'drums') { // the stick on the beat (harder on 1)
+      const hit = Math.pow(1 - beat, 5) * (one ? 1 : 0.7);
+      const px = lerp(0.5, 0.58, hit), py = lerp(-0.62, -0.02, hit);
+      limb(c, r, 0.18, -0.72, px, py);
+      stroke(PAPER); strokeWeight(Math.max(1.5, r * 0.035));
+      line(px * r, py * r, (px + 0.22) * r, (py + lerp(-0.2, 0.18, hit)) * r);
+      noStroke();
+      const hit2 = Math.pow(1 - ((beat + 0.5) % 1), 5) * 0.6;
+      limb(c, r, -0.18, -0.72, -0.44, lerp(-0.58, -0.32, hit2));
+    } else if (s.inst === 'synth') { // nods, a paw on a knob, one on the keys
+      hy += Math.pow(1 - beat, 3) * 0.07;
+      tilt = Math.sin(t * 0.05) * 0.06;
+      limb(c, r, -0.34, -0.48, -0.6 + Math.sin(t * 0.04) * 0.02, -0.12);
+      limb(c, r, 0.08, -0.5, 0.32, 0.12 - (0.5 + 0.5 * Math.sin(t * 0.3)) * lv * 0.1);
+    } else if (s.inst === 'bass') { // plucks near the body, the other paw on the neck
+      const pl = Math.sin(t * 0.55) * (0.02 + lv * 0.06);
+      limb(c, r, -0.46, -0.5, -0.24 + pl, 0.18);
+      limb(c, r, -0.26, -0.56, 0.3, -0.26);
+      tilt = sway * 1.5;
+    }
+  } else if (mode === 'idle') { // ready: paws resting on the instrument
+    const rest = { piano: [[-0.26, -0.6, -0.3, -0.55], [0.26, -0.6, 0.3, -0.55]], drums: [[0.18, -0.72, 0.42, -0.62]],
+      synth: [[-0.34, -0.48, -0.5, -0.32]], bass: [[-0.46, -0.5, -0.3, 0.1]] }[s.inst];
+    rest.forEach(([a, b, x, y]) => limb(c, r, a, b, x, y));
+  } else if (mode === 'sleep') {
+    tilt = 0.32;
+    hy += 0.05;
+  }
+  drawCatHead(s, c, r, hx, hy, tilt, mode, lv);
+  if (mode === 'muted') { // paws over its ears
+    const hr = c.hr * r;
+    limb(c, r, hx - 0.25, hy + 0.32, hx - (hr * 0.72) / r, hy - (hr * 0.75) / r);
+    limb(c, r, hx + 0.25, hy + 0.32, hx + (hr * 0.72) / r, hy - (hr * 0.75) / r);
+  }
+  pop();
+}
+function drawCatHead(s, c, r, hx, hy, tilt, mode, lv) {
+  const hr = c.hr * r;
+  const dark = c.fur === CAT_DARK || c.fur === '#5b7ecb';
+  const t = frameCount;
+  push();
+  translate(hx * r, hy * r);
+  rotate(tilt);
+  // ears (twitching with the music)
+  const tw = mode === 'play' ? lv * 0.12 * Math.sin(t * 0.4 + s.i) : 0;
+  catPen(c, r);
+  [-1, 1].forEach((k) => {
+    roughShape([[k * hr * 0.2, -hr * 0.6], [k * hr * (0.85 + tw), -hr * (1.45 + tw)], [k * hr * 0.92, -hr * 0.2]], 1200 + s.i * 5 + k, Math.max(0.4, hr * 0.03));
+  });
+  roughEllipse(0, 0, hr, hr * 0.86, 1210 + s.i * 7, Math.max(0.5, hr * 0.03));
+  noStroke();
+  fill(c.cut);
+  [-1, 1].forEach((k) => triangle(k * hr * 0.36, -hr * 0.62, k * hr * 0.76, -hr * 1.18, k * hr * 0.8, -hr * 0.42));
+  if (c.mask) { fill(PAPER); roughEllipse(0, hr * 0.32, hr * 0.66, hr * 0.5, 1220, Math.max(0.4, hr * 0.03)); }
+  // eyes: closed asleep, squeezed when muted, wide on loud bits; a blink now and then
+  const blink = (t + s.i * 53) % 230 < 6;
+  const open = mode === 'sleep' || blink ? 0 : mode === 'muted' ? 0.12 : Math.min(1.25, 0.6 + lv * 0.9);
+  const eyeC = dark ? PAPER : BLUE, pupil = dark ? CAT_DARK : PAPER;
+  [-1, 1].forEach((k) => {
+    const ex = k * hr * 0.38, ey = -hr * 0.08;
+    if (open < 0.15) {
+      noFill(); stroke(c.mask && false ? CAT_DARK : eyeC); strokeWeight(Math.max(1, hr * 0.08));
+      if (mode === 'muted') { line(ex - hr * 0.14, ey - hr * 0.08, ex + hr * 0.14, ey); line(ex - hr * 0.14, ey + hr * 0.08, ex + hr * 0.14, ey); }
+      else arc(ex, ey, hr * 0.34, hr * 0.22, 0, PI);
+      noStroke();
+    } else {
+      fill(eyeC);
+      ellipse(ex, ey, hr * 0.36, hr * 0.3 * open);
+      fill(pupil);
+      ellipse(ex + k * hr * 0.03, ey, hr * 0.09, hr * 0.26 * open);
+    }
+  });
+  // the nose: the one orange cut
+  fill(ORANGE);
+  triangle(-hr * 0.09, hr * 0.2, hr * 0.09, hr * 0.2, 0, hr * 0.32);
+  // singing now and then, on loud bits (like the first album's cat)
+  const sing = mode === 'play' && lv > 0.3 && Math.sin(t * 0.045 + s.i * 2) > 0.75;
+  if (sing) { fill(c.mask ? CAT_DARK : dark ? PAPER : BLUE); ellipse(0, hr * 0.5, hr * 0.24, hr * 0.28); }
+  // whiskers
+  if (hr >= 7) {
+    stroke(dark ? PAPER : BLUE); strokeWeight(Math.max(0.6, hr * 0.04));
+    const wt = mode === 'play' ? Math.sin(t * 0.3 + s.i) * lv * hr * 0.1 : 0;
+    [-1, 1].forEach((k) => [-1, 0, 1].forEach((j) =>
+      line(k * hr * 0.3, hr * 0.32, k * hr * 1.15, hr * (0.22 + j * 0.16) + wt * j)));
+    noStroke();
+  }
+  pop();
+  // asleep: a little z rising
+  if (mode === 'sleep') {
+    const zt = (frameCount * 0.01 + s.i * 0.3) % 1;
+    fill(PAPER); drawingContext.globalAlpha = 0.7 * (1 - zt);
+    textAlign(CENTER, CENTER); textStyle(BOLD); textSize(Math.max(9, hr * 0.8));
+    text('z', (hx * r) + hr * (1 + zt * 0.5), hy * r - hr * (1.1 + zt * 1.2));
+    drawingContext.globalAlpha = 1;
+  }
+}
+
 const STAR_SPOTS = {
-  piano: [[-1.02, -0.72, 0.15], [0.98, -0.9, 0.1], [0.62, -1.08, 0.065]],
-  drums: [[-1.0, -0.98, 0.1], [1.04, -0.62, 0.14], [-0.2, -1.12, 0.07]],
-  synth: [[-0.98, -0.62, 0.12], [0.94, -0.82, 0.09], [0.1, -0.88, 0.06]],
-  bass: [[-0.92, -0.86, 0.14], [-0.52, 0.66, 0.08], [0.98, 0.5, 0.1]],
+  piano: [[-1.02, -0.72, 0.15], [0.98, -0.9, 0.1], [0.66, -1.22, 0.065]],
+  drums: [[-1.0, -0.98, 0.1], [1.04, -0.62, 0.14], [-0.62, -1.32, 0.07]],
+  synth: [[-0.98, -0.62, 0.12], [0.94, -0.82, 0.09], [0.55, -1.0, 0.06]],
+  bass: [[-1.02, -0.5, 0.12], [-0.52, 0.66, 0.08], [0.98, 0.5, 0.1]],
 };
 function instrumentStars(s, r, on, lv) {
   const ph = on && eng && eng.phase ? eng.phase() : null;
@@ -1156,6 +1581,7 @@ function drawSlider(s, area) {
   drawingContext.globalAlpha = 1;
 }
 function sliderAt(x, y) {
+  if (L.compact || !L.sliders) return null;
   return spots.find((s) => {
     if (!s.area) return false;
     const g = sliderOf(s);
@@ -1175,7 +1601,8 @@ function drawSpot(s) {
   const tagH = Math.max(12, Math.min(17, s.w * 0.07)) * 1.9;
   const area = s.h - tagH - 14; // above the tag (and its tempo note)
   // the instrument (and its stars) left of the volume slider
-  const r = Math.min((s.w / 2 - 26) / 1.1, area * 0.62 * 0.8);
+  const sx = L.sliders ? 14 : 0; // room for the slider on the right
+  const r = Math.min((s.w / 2 - (L.sliders ? 26 : 6)) / 1.1, area * 0.42);
   const on = !!(s.track && running);
   const lv = on && s.voice && s.voice.ready ? s.voice.level() : 0;
   s.pulse = lerp(s.pulse, lv, 0.35);
@@ -1183,7 +1610,7 @@ function drawSpot(s) {
   const hovered = drag && drag.moved && spotAt(drag.x, drag.y) === s;
   const ok = hovered && accepts(s, drag.card.id);
   const quiet = s.track && !plays(s.track, s.part, s.inst);
-  const cy = s.cy - s.h / 2 + area / 2 + 2;
+  const cy = s.cy - s.h / 2 + area - 0.86 * r - 4; // the cat's head above
 
   if (hovered) {
     fill(ok ? ORANGE : 'rgba(253,253,253,0.25)');
@@ -1199,14 +1626,17 @@ function drawSpot(s) {
     noStroke();
   }
   push();
-  translate(s.cx - 14 + Math.sin(frameCount * 0.7) * s.shake * 4, cy);
+  translate(s.cx - sx + Math.sin(frameCount * 0.7) * s.shake * 4, cy);
   scale(1 + s.pulse * 0.08);
   INK = !s.track || s.muted ? FADED : quiet ? DIM : PAPER;
+  INK0 = INK; drawCat(s, r, 'back'); INK = INK0;
   drawInstrument(s.inst, r, 100 + s.i * 31);
   INK = PAPER;
   instrumentStars(s, r, on && !s.muted, lv);
+  drawCat(s, r, 'front');
   pop();
-  drawSlider(s, area);
+  if (L.sliders) drawSlider(s, area);
+  else s.area = 0;
 
   let ts = Math.max(12, Math.min(17, s.w * 0.07));
   textAlign(CENTER, CENTER); textStyle(BOLD); textSize(ts);
@@ -1229,10 +1659,10 @@ function drawSpot(s) {
       let note = notes.join(' · ');
       const kn = keyNote(s);
       if (kn) { // the keys too, when there is room
-        const keys = `${eng.byId[s.track].key} → ${eng.byId[spots[0].track].key}`.toUpperCase();
+        const keys = `${eng.byId[s.track].key} → ${eng.byId[spotOf('piano').track].key}`.toUpperCase();
         if (textWidth(note + ' · ' + keys) < s.w - 36) note += ' · ' + keys;
       }
-      text(note, s.cx - 14, y - 9);
+      text(note, s.cx - (L.sliders ? 14 : 0), y - 9);
     }
   } else {
     fill(PAPER);
@@ -1428,7 +1858,7 @@ function up(e) {
   if (d.kind === 'slider') return;
   if (d.kind === 'play') return mainButton();
   if (d.kind === 'dice') { hatPop = millis(); return randomTable(); }
-  if (d.kind === 'tempo') return toggleTempo();
+  if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
   if (d.kind === 'chip') {
     const { id, k } = d.chip;
@@ -1438,6 +1868,7 @@ function up(e) {
   const { x, y } = pos(e);
   if (!d.moved) {
     if (d.from) return toggle(d.from);
+    if (L.compact) return tapToken(d.card.id);
     const now = millis();
     if (lastTap.id === d.card.id && now - lastTap.t < 380) { lastTap = { id: null, t: 0 }; return wholeTrack(d.card.id); }
     lastTap = { id: d.card.id, t: now };

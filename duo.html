@@ -143,12 +143,27 @@ function drawInstrument(inst, r, seed) {
     fill(INK);
     roughEllipse(0, 0.3 * r, 0.11 * r, 0.11 * r, seed + 12, a * 0.5);
   } else if (inst === 'synth') {
+    // narrower than the piano, fewer keys, a few knobs and faders (owner,
+    // 2026-11-22): the two read apart
     fill(INK);
-    roughShape([[-0.98 * r, -0.2 * r], [0.98 * r, -0.42 * r], [0.98 * r, 0.42 * r], [-0.98 * r, 0.42 * r]], seed, a);
+    roughShape([[-0.8 * r, -0.22 * r], [0.8 * r, -0.42 * r], [0.8 * r, 0.42 * r], [-0.8 * r, 0.42 * r]], seed, a);
     fill(BLUE);
-    for (let i = 0; i < 6; i++) roughEllipse((-0.8 + i * 0.2) * r, (-0.1 - i * 0.022) * r, 0.065 * r, 0.065 * r, seed + 30 + i, a * 0.4);
-    for (let i = 0; i < 3; i++) roughRect((0.45 + i * 0.16) * r, (-0.3 + i * 0.01) * r, 0.05 * r, 0.24 * r, seed + 40 + i, a * 0.4);
-    keys(-0.9 * r, 0.06 * r, 1.8 * r, 0.3 * r, 17, seed + 60, a);
+    // 4 knobs, each with its notch
+    for (let i = 0; i < 4; i++) {
+      const kx = (-0.62 + i * 0.19) * r, ky = (-0.1 - i * 0.022) * r;
+      roughEllipse(kx, ky, 0.075 * r, 0.075 * r, seed + 30 + i, a * 0.4);
+      push(); fill(INK); translate(kx, ky); rotate(-0.9 + i * 0.55);
+      rect(-0.012 * r, -0.07 * r, 0.024 * r, 0.045 * r);
+      pop();
+    }
+    // 4 faders: slots and their caps
+    const caps = [0.35, 0.65, 0.2, 0.5];
+    for (let i = 0; i < 4; i++) {
+      const fx = (0.18 + i * 0.15) * r, top = (-0.33 + i * 0.012) * r, h = 0.27 * r;
+      rect(fx - 0.014 * r, top, 0.028 * r, h);
+      roughRect(fx - 0.05 * r, top + caps[i] * h - 0.025 * r, 0.1 * r, 0.05 * r, seed + 40 + i, a * 0.3);
+    }
+    keys(-0.74 * r, 0.06 * r, 1.48 * r, 0.3 * r, 12, seed + 60, a);
   } else if (inst === 'bass') {
     push();
     rotate(-0.62);
@@ -960,8 +975,8 @@ const CAT_DARK = '#0d1733';
 // bass (owner, 2026-11-22)
 const CATS = {
   piano: { fur: CAT_DARK, cut: PAPER, line: PAPER, mask: true, head: [0.02, -0.96], body: [0, -0.42, 0.38, 0.6], hr: 0.26 },
-  drums: { fur: '#a9c1ee', cut: BLUE, line: null, head: [0.04, -1.0], body: [0, -0.44, 0.64, 0.62], hr: 0.31 },
-  synth: { fur: PAPER, cut: BLUE, line: null, head: [-0.14, -0.84], body: [-0.14, -0.3, 0.62, 0.54], hr: 0.31 },
+  drums: { fur: '#a9c1ee', cut: BLUE, line: null, head: [0.04, -0.98], body: [0, -0.44, 0.54, 0.58], hr: 0.29 },
+  synth: { fur: PAPER, cut: BLUE, line: null, head: [-0.14, -0.82], body: [-0.14, -0.3, 0.53, 0.5], hr: 0.29 },
   bass: { fur: '#5b7ecb', cut: PAPER, line: PAPER, head: [-0.42, -0.86], body: [-0.36, -0.24, 0.34, 0.62], hr: 0.26 },
 };
 // What the cat does now: 'sleep' (no song), 'muted' (paws on its ears),
