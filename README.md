@@ -49,6 +49,14 @@ It plays in Tilefolio only once:
    (`{ "01_Rototo/p1-drums.mp3": "https://media.tilefolio.com/i1/…" }`); then
    `make tile` again. Until then the build warns and the tile stays silent.
 
+   `make upload EMAIL=<picasol.fr owner's e-mail>` does it (tools/upload.mjs,
+   Node 22): logs in as the site's owner on admin.tilefolio.com (password
+   asked, or OWNER_PASSWORD), uploads each part file to the site's media
+   library as `pinkasol-tile_<track>_<file>.mp3` (those already there are
+   reused: a second run resumes), writes `audio/media-urls.json`, checks every
+   address (audio, CORS `*`), and rebuilds the tile. `make upload-dry` lists
+   what it would send.
+
 ## Pages
 
     index.html        menu
