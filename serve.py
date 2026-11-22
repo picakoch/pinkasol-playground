@@ -17,11 +17,25 @@ import json
 import re
 import socket
 import socketserver
+import subprocess
 import sys
+import threading
 from pathlib import Path
 
 PORT = 8121
 LAN = "--lan" in sys.argv
+ROOT = Path(__file__).resolve().parent
+# The owner's tools: no box policy (they post, they read the stems)
+TOOLS = ("/picker.html", "/parts.html")
+PY = str(ROOT / "tools" / ".venv" / "bin" / "python")
+# parts.html's "Régénérer": the edits into the analysis, the cut, the tiles
+REGENERATE = [
+    [PY, "-W", "ignore", "tools/apply_edits.py"],
+    [PY, "tools/cut.py"],
+    ["python3", "tools/build.py", "--local"],
+    ["python3", "tools/build.py"],
+]
+REGENERATING = threading.Lock()
 
 
 def policy(origin):
@@ -47,9 +61,9 @@ def policy(origin):
 class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         # The box policy on every page (the menu, the experiences), not on the
-        # owner's tool (picker.html)
+        # owner's tools (TOOLS: picker.html, parts.html)
         path = self.path.split("?")[0]
-        if (path == "/" or path.endswith(".html")) and path != "/picker.html":
+        if (path == "/" or path.endswith(".html")) and path not in TOOLS:
             host = self.headers.get("Host", f"localhost:{PORT}")
             if not re.fullmatch(r"[A-Za-z0-9.-]+(:\d{1,5})?", host):
                 host = f"localhost:{PORT}"
@@ -58,14 +72,66 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_POST(self):
-        # picker.html's "Save picks", from this Mac only
-        if self.path != "/save-picks" or self.client_address[0] not in ("127.0.0.1", "::1"):
+        # The owner's tools, from this Mac only: picker.html's "Save picks",
+        # parts.html's "Enregistrer" and "Régénérer"
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
             return self.send_error(404)
-        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        json.loads(body)
-        (Path(__file__).parent / "audio" / "picks.json").write_bytes(body)
-        self.send_response(204)
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)) or 0)
+        if self.path == "/save-picks":
+            json.loads(body)
+            (ROOT / "audio" / "picks.json").write_bytes(body)
+            self.send_response(204)
+            return self.end_headers()
+        if self.path == "/save-parts":
+            save_parts(body)
+            self.send_response(204)
+            return self.end_headers()
+        if self.path == "/regenerate":
+            return self.regenerate(body)
+        self.send_error(404)
+
+    def regenerate(self, body):
+        # One at a time: the cut and the builds write the same files
+        if not REGENERATING.acquire(blocking=False):
+            return self.send_json(409, {"ok": False, "log": "Une régénération est déjà en cours."})
+        try:
+            if body.strip():
+                save_parts(body)
+            log, ok = [], True
+            for step in REGENERATE:
+                log.append("$ " + " ".join(step))
+                r = subprocess.run(step, cwd=ROOT, capture_output=True, text=True)
+                log.append((r.stdout + r.stderr).strip())
+                if r.returncode:
+                    ok = False
+                    log.append(f"(failed: exit {r.returncode})")
+                    break
+            self.send_json(200 if ok else 500, {"ok": ok, "log": "\n".join(x for x in log if x)})
+        finally:
+            REGENERATING.release()
+
+    def send_json(self, code, data):
+        raw = json.dumps(data, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
+        self.wfile.write(raw)
+
+
+def save_parts(body):
+    """parts.html's edits: { track: [ {bar, bars}, ... ] }; {} or a track
+    left out = the analyser's parts"""
+    edits = json.loads(body)
+    clean = {
+        str(track): [{"bar": int(p["bar"]), "bars": int(p["bars"])} for p in parts]
+        for track, parts in edits.items() if parts
+    }
+    path = ROOT / "audio" / "parts-edit.json"
+    if clean:
+        path.write_text(json.dumps(dict(sorted(clean.items())), indent=1) + "\n")
+    elif path.exists():
+        path.unlink()
 
 
 def lan_address():

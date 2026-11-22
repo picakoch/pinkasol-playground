@@ -262,6 +262,42 @@ def select_parts(stems, bars, norm, mix, duration, bar_s):
         })
     return parts
 
+
+EDITS = ROOT / "audio" / "parts-edit.json"
+
+
+def load_edits():
+    """The owner's parts (parts.html): { track: [ {bar, bars}, ... ] }."""
+    return json.loads(EDITS.read_text()) if EDITS.exists() else {}
+
+
+def parts_from_edits(edited, stems, bars, norm, mix):
+    """The owner's parts, as select_parts() gives them: start/end on bar
+    lines snapped to the attacks, `playing` by the same strict rule (present
+    in 3/4 of the bars), `all` when every stem plays (or, in a song where
+    bass and synth never meet, every stem but one of those two)."""
+    n = len(bars) - 1
+    snap = snapper(mix)
+
+    def plays(i, s, L):
+        return float((norm[i][s:s + L] > 0.25).mean()) >= 0.75
+
+    parts = []
+    for e in sorted(edited, key=lambda e: (int(e["bar"]), int(e["bars"]))):
+        s = max(0, min(int(e["bar"]), n - 1))
+        L = max(1, min(int(e["bars"]), n - s))
+        playing = [i for i in stems if plays(i, s, L)]
+        everyone = len(playing) == len(stems)
+        if not everyone and "bass" in stems and "synth" in stems:
+            others = [i for i in stems if i not in ("bass", "synth")]
+            everyone = all(i in playing for i in others) and (("bass" in playing) != ("synth" in playing))
+        parts.append({
+            "bar": s, "bars": L,
+            "start": round(snap(float(bars[s])), 3), "end": round(snap(float(bars[s + L])), 3),
+            "playing": playing, "all": everyone, "edited": True,
+        })
+    return parts
+
 def analyse(track, meta):
     folder = STEMS / track
     stems = {i: load(folder / f"{i}.mp3") for i in INSTRUMENTS if (folder / f"{i}.mp3").exists()}
@@ -343,10 +379,17 @@ def analyse(track, meta):
     # bar (no break, no fill at the end: Arroyoyo's part 3 had both), no
     # instrument dropping out. 8 bars when the groove holds, else 4
     parts = select_parts(stems, bars, norm, mix, duration, bar_s)
+    # The owner's parts (parts.html) win over the analyser's, which are kept
+    # in parts_auto (the editor's "back to the analysis")
+    auto = parts
+    edited = load_edits().get(track)
+    if edited:
+        parts = parts_from_edits(edited, stems, bars, norm, mix)
 
     return {
         **meta,
         "parts": parts,
+        "parts_auto": auto,
         "tempo": round(tempo, 2),
         "meter": meter,
         "free_until": free_until,

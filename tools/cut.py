@@ -9,7 +9,9 @@ cut on bar lines from the stem, with TAIL seconds more after its end (the
 ring-out when it stops). audio/pieces/manifest.json says, per piece, where
 its loop is in the file: [0, loop_end] (sample-accurate once decoded).
 """
+import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -58,18 +60,30 @@ def main():
                 })
         # Parts: every stem cut on the same bars, so a track's stems started
         # together play its passage as recorded (time-aligned, no full mix)
+        # File names by content (p<k>-<inst>-<hash of the bounds>): a part
+        # that changes gets a new name, so tools/upload.mjs (which reuses a
+        # library file by name) sends it again. A file already cut with the
+        # same bounds is kept as is
         entry["parts"] = []
+        keep = set()
         for k, part in enumerate(a.get("parts", [])):
             files = {}
             for inst in a["pieces"]:
-                name = f"p{k + 1}-{inst}.mp3"
-                cut(AUDIO / "stems" / track / f"{inst}.mp3", part["start"], part["end"], OUT / track / name)
+                h = hashlib.sha1(f"{track}|{inst}|{part['start']:.3f}|{part['end']:.3f}".encode()).hexdigest()[:6]
+                name = f"p{k + 1}-{inst}-{h}.mp3"
+                if not (OUT / track / name).exists():
+                    cut(AUDIO / "stems" / track / f"{inst}.mp3", part["start"], part["end"], OUT / track / name)
                 files[inst] = f"{track}/{name}"
+                keep.add(name)
             entry["parts"].append({
                 "start": part["start"], "end": part["end"], "bars": part["bars"],
                 "loop_end": round(part["end"] - part["start"], 3), "playing": part["playing"],
                 "all": part.get("all", False), "files": files,
             })
+        # Part files no longer in the manifest (an old cut, the old names)
+        for old in (OUT / track).glob("p*-*.mp3"):
+            if re.match(r"p\d+-", old.name) and old.name not in keep:
+                old.unlink()
         manifest["tracks"].append(entry)
         print(track, len(entry["pieces"]), "pieces,", len(entry["parts"]), "parts")
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1, ensure_ascii=False))

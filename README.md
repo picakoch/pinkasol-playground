@@ -64,10 +64,37 @@ It plays in Tilefolio only once:
    address (audio, CORS `*`), and rebuilds the tile. `make upload-dry` lists
    what it would send.
 
+## Choosing the loops: the parts editor
+
+    python3 serve.py      # then http://localhost:8121/parts.html  (make editor)
+
+One section per song (an accordion): its stems as rows (level per bar), the
+bar grid, and its parts as orange blocks. Drag a part to move it, drag an
+edge to lengthen or shorten it: everything snaps to the bars. ▶ loops a
+part, every stem together and sample-aligned; click a stem's button to mute
+it, double-click to hear it alone; space stops. ◀ ▶ move a part by one bar,
+− + its end; ✕ deletes it; "+ Ajouter une partie" adds 8 bars where you
+clicked on the timeline. "Revenir à l'analyse" brings back the analyser's
+parts for that song.
+
+**Enregistrer** writes `audio/parts-edit.json` (`{ "<song>": [ {"bar", "bars"}, … ] }`,
+edited songs only). **Régénérer tous les morceaux** (or `make regenerate`)
+puts the edits in `audio/analysis.json` (`tools/apply_edits.py`: start/end
+snapped to the attacks, who plays, ★ recomputed; the analyser's own parts
+stay in `parts_auto`), cuts the files (`tools/cut.py`) and rebuilds both tiles.
+A later `make analyse` keeps the edits.
+
+Part files are named by their content (`p<k>-<inst>-<hash of the bounds>.mp3`):
+a changed part gets a new name, so `make upload` sends only what changed. The
+first upload after this naming change sends every part again (the old files
+stay in the site's media library until deleted there by hand). Then paste
+the rebuilt tile again.
+
 ## Pages
 
     index.html        menu
     duo.html          Remix Pinkasol ! (the table)
+    parts.html        the parts editor (see above)
     picker.html       workshop: audition the analyser's candidate loops
     engine-test.html  engine smoke test
     attic/            two earlier experiments (a sky of planets, a collage)

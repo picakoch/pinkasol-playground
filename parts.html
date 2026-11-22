@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pinkasol — les parties</title>
+<style>
+  :root { --blue: #174596; --paper: #fdfdfd; --orange: #dc8d4e; --faded: #7f97c7; --ink: #0e2c66; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--blue); color: var(--paper);
+    font: 15px/1.35 "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--ink); padding: 10px 18px;
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap; box-shadow: 0 2px 0 rgba(0,0,0,.2); }
+  header h1 { font-size: 20px; margin: 0 10px 0 0; text-transform: uppercase; letter-spacing: .04em; }
+  button { font: inherit; font-weight: 700; border: 0; border-radius: 3px; cursor: pointer;
+    background: var(--paper); color: var(--blue); padding: 6px 11px; }
+  button:hover { background: #fff3ea; }
+  button.orange { background: var(--orange); color: var(--paper); }
+  button.ghost { background: transparent; color: var(--paper); border: 1px solid var(--faded); }
+  button:disabled { opacity: .45; cursor: default; }
+  #status { font-size: 14px; opacity: .9; }
+  main { padding: 14px 18px 80px; max-width: 1500px; margin: 0 auto; }
+  .help { opacity: .8; font-size: 14px; margin: 0 0 12px; }
+  section.song { margin: 0 0 10px; background: rgba(255,255,255,.05); border-radius: 4px; }
+  section.song > .head { width: 100%; text-align: left; display: flex; gap: 14px; align-items: baseline;
+    background: transparent; color: var(--paper); padding: 12px 14px; border-radius: 4px; }
+  section.song > .head:hover { background: rgba(255,255,255,.08); }
+  .head .title { font-size: 20px; text-transform: uppercase; letter-spacing: .03em; min-width: 140px; }
+  .head .meta { opacity: .75; font-weight: 600; }
+  .badge { background: var(--orange); color: var(--paper); font-size: 12px; padding: 2px 7px; border-radius: 2px; text-transform: uppercase; }
+  .badge.dirty { background: var(--paper); color: var(--blue); }
+  .head .arrow { margin-left: auto; opacity: .7; }
+  .body { padding: 4px 14px 16px; }
+  .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; }
+  .tools .note { opacity: .75; font-size: 13px; }
+  canvas.timeline { display: block; width: 100%; touch-action: none; cursor: default; border-radius: 3px; }
+  table.parts { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+  table.parts td { padding: 5px 6px; border-top: 1px solid rgba(255,255,255,.12); vertical-align: middle; }
+  table.parts tr.playing td { background: rgba(220,141,78,.18); }
+  table.parts tr.selected td { outline: 1px solid var(--orange); outline-offset: -1px; }
+  .num { font-size: 18px; font-weight: 800; width: 52px; }
+  .star { color: var(--orange); }
+  .bars { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .who { opacity: .8; }
+  .stems button { padding: 3px 8px; margin-right: 4px; font-size: 13px; }
+  .stems button.muted { background: transparent; color: var(--faded); border: 1px dashed var(--faded); }
+  .stems button.solo { background: var(--orange); color: var(--paper); }
+  .small button { padding: 3px 8px; }
+  pre#log { white-space: pre-wrap; background: var(--ink); padding: 10px; border-radius: 3px; max-height: 300px; overflow: auto; font: 12px/1.4 ui-monospace, monospace; }
+  .loading { opacity: .8; padding: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Les parties</h1>
+  <button id="save" class="orange" disabled>Enregistrer</button>
+  <button id="regen">Régénérer tous les morceaux</button>
+  <button id="stop" class="ghost">■ Stop (espace)</button>
+  <span id="status">Chargement…</span>
+</header>
+<main>
+  <p class="help">Chaque chanson : ses pistes (batterie, basse, piano, synthé) et ses parties, les boucles que joue la table.
+  Glissez une partie pour la déplacer, son bord pour la rallonger ou la raccourcir : tout s'aligne sur les mesures.
+  ▶ joue la partie en boucle, toutes les pistes ensemble. <b>Enregistrer</b> garde vos parties
+  (audio/parts-edit.json) ; <b>Régénérer</b> recoupe les fichiers et refait la tuile.</p>
+  <div id="songs"></div>
+  <pre id="log" hidden></pre>
+</main>
+<script>
+// The owner's parts editor (served without the box policy by serve.py).
+// A part = { bar, bars }: on the analysis' bar lines (analysis.json `bars`).
+// Edits stay here until "Enregistrer" (POST /save-parts -> parts-edit.json);
+// "Régénérer" (POST /regenerate) applies them (tools/apply_edits.py), cuts
+// the files (tools/cut.py) and rebuilds the tiles.
+'use strict';
+const INST = ['drums', 'bass', 'piano', 'synth'];
+const NAME = { drums: 'Batterie', bass: 'Basse', piano: 'Piano', synth: 'Synthé' };
+const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', FADED = '#7f97c7', INK = '#0e2c66';
+const $ = (s) => document.querySelector(s);
+const status = (t) => { $('#status').textContent = t; };
+const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+let analysis = {}, saved = {}, work = {}, open = null;
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.85; master.connect(ctx.destination);
+const buffers = {};   // track -> { inst: AudioBuffer }
+const levels = {};    // track -> { inst: Float32Array per bar, 0..1 }
+let player = null;    // { track, part (object), sources, gains, t0, a, b }
+let selected = null;  // { track, part } or { track, bar } (where "add" puts a part)
+
+const stemsOf = (t) => INST.filter((i) => analysis[t].pieces[i]);
+const autoParts = (t) => (analysis[t].parts_auto || analysis[t].parts).map((p) => ({ bar: p.bar, bars: p.bars }));
+const same = (a, b) => a.length === b.length && a.every((p, i) => p.bar === b[i].bar && p.bars === b[i].bars);
+const sortParts = (list) => list.sort((x, y) => x.bar - y.bar || x.bars - y.bars);
+// The analysis' info for a part (★, who plays) when the bounds are unchanged
+function infoOf(t, p) {
+  return analysis[t].parts.find((q) => q.bar === p.bar && q.bars === p.bars)
+    || (analysis[t].parts_auto || []).find((q) => q.bar === p.bar && q.bars === p.bars) || null;
+}
+const isEdited = (t) => !!saved[t];
+const isDirty = (t) => !same(work[t], saved[t] || autoParts(t));
+
+// --- load ---
+async function load() {
+  analysis = await (await fetch('/audio/analysis.json', { cache: 'no-store' })).json();
+  try { saved = await (await fetch('/audio/parts-edit.json', { cache: 'no-store' })).json(); } catch { saved = {}; }
+  for (const t of Object.keys(analysis)) {
+    work[t] = sortParts((saved[t] || autoParts(t)).map((p) => ({ bar: p.bar, bars: p.bars })));
+  }
+  render();
+  status(`${Object.keys(analysis).length} chansons. Ouvrez-en une.`);
+}
+
+async function decode(t) {
+  if (buffers[t]) return;
+  buffers[t] = {};
+  levels[t] = {};
+  const bars = analysis[t].bars;
+  await Promise.all(stemsOf(t).map(async (i) => {
+    const buf = await ctx.decodeAudioData(await (await fetch(`/audio/stems/${t}/${i}.mp3`)).arrayBuffer());
+    buffers[t][i] = buf;
+    // level per bar (RMS of the first channel), scaled by the 95th percentile
+    const d = buf.getChannelData(0), sr = buf.sampleRate, out = new Float32Array(bars.length - 1);
+    for (let k = 0; k < bars.length - 1; k++) {
+      const a = Math.floor(bars[k] * sr), b = Math.min(d.length, Math.floor(bars[k + 1] * sr));
+      let s = 0; for (let j = a; j < b; j += 4) s += d[j] * d[j];
+      out[k] = Math.sqrt(s / Math.max(1, (b - a) / 4));
+    }
+    const sorted = [...out].sort((x, y) => x - y), p95 = sorted[Math.floor(sorted.length * 0.95)] || 1;
+    levels[t][i] = out.map((v) => Math.min(1.2, v / p95));
+  }));
+}
+function release(t) {
+  if (player && player.track === t) return;
+  delete buffers[t]; delete levels[t];
+}
+
+// --- render ---
+function render() {
+  const root = $('#songs');
+  root.innerHTML = '';
+  for (const t of Object.keys(analysis)) {
+    const a = analysis[t];
+    const sec = document.createElement('section');
+    sec.className = 'song'; sec.dataset.track = t;
+    const head = document.createElement('button');
+    head.className = 'head';
+    head.innerHTML = `<span class="title">${a.title}</span><span class="meta">${a.key} · ${a.tempo} bpm · ${a.meter}/4 · ${work[t].length} parties · ${stemsOf(t).map((i) => NAME[i]).join(', ')}</span>`
+      + (isDirty(t) ? '<span class="badge dirty">modifié</span>' : isEdited(t) ? '<span class="badge">édité</span>' : '')
+      + `<span class="arrow">${open === t ? '▲' : '▼'}</span>`;
+    head.onclick = () => toggle(t);
+    sec.append(head);
+    if (open === t) sec.append(body(t));
+    root.append(sec);
+  }
+  $('#save').disabled = !Object.keys(analysis).some(isDirty);
+}
+
+async function toggle(t) {
+  const was = open;
+  open = open === t ? null : t;
+  selected = null;
+  if (was && was !== open) release(was);
+  render();
+  if (open) {
+    status(`Décodage des pistes de ${analysis[t].title}…`);
+    await decode(t);
+    if (open === t) { render(); status(`${analysis[t].title} : ${work[t].length} parties.`); }
+  }
+}
+
+function body(t) {
+  const a = analysis[t];
+  const div = document.createElement('div');
+  div.className = 'body';
+  const tools = document.createElement('div');
+  tools.className = 'tools';
+  const add = btn('+ Ajouter une partie', () => addPart(t));
+  const revert = btn('Revenir à l\'analyse', () => { work[t] = autoParts(t); stopIfTrack(t); render(); });
+  revert.className = 'ghost';
+  const note = document.createElement('span');
+  note.className = 'note';
+  note.textContent = `${a.bars.length - 1} mesures de ${a.bar_seconds.toFixed(2)} s`
+    + (a.free_until ? ` · rubato jusqu'à ${a.free_until} s (pas de mesures avant)` : '')
+    + ' · cliquez sur la frise pour choisir où ajouter une partie';
+  tools.append(add, revert, note);
+  div.append(tools);
+  if (!buffers[t] || !levels[t] || Object.keys(levels[t]).length < stemsOf(t).length) {
+    const l = document.createElement('div'); l.className = 'loading'; l.textContent = 'Décodage des pistes…';
+    div.append(l);
+    return div;
+  }
+  const cv = document.createElement('canvas');
+  cv.className = 'timeline';
+  div.append(cv);
+  timeline(t, cv);
+  div.append(table(t));
+  return div;
+}
+
+function btn(label, fn, title) {
+  const b = document.createElement('button');
+  b.textContent = label; b.onclick = fn; if (title) b.title = title;
+  return b;
+}
+
+// --- the timeline: rows of per-bar levels, the bar grid, the parts ---
+const RULER = 22, ROW = 34, PARTS_H = 30;
+let tl = null; // { t, cv, geom }
+function timeline(t, cv) {
+  tl = { t, cv };
+  const resize = () => {
+    const w = cv.parentElement.clientWidth, h = RULER + PARTS_H + stemsOf(t).length * ROW + 6;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = w * dpr; cv.height = h * dpr; cv.style.height = h + 'px';
+    cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    tl.w = w; tl.h = h;
+    draw();
+  };
+  new ResizeObserver(resize).observe(cv.parentElement);
+  resize();
+  cv.onpointerdown = (e) => pointerDown(e);
+  cv.onpointermove = (e) => pointerMove(e);
+  cv.onpointerup = cv.onpointercancel = (e) => pointerUp(e);
+}
+const L0 = 70; // left margin: stem names
+function xOf(sec) { const a = analysis[tl.t]; return L0 + (sec / a.duration) * (tl.w - L0 - 8); }
+function secOf(x) { const a = analysis[tl.t]; return ((x - L0) / (tl.w - L0 - 8)) * a.duration; }
+// the bar line nearest to x (index into bars)
+function barAt(x) {
+  const bars = analysis[tl.t].bars, s = secOf(x);
+  let best = 0;
+  for (let k = 1; k < bars.length; k++) if (Math.abs(bars[k] - s) < Math.abs(bars[best] - s)) best = k;
+  return best;
+}
+function partRect(p) {
+  const bars = analysis[tl.t].bars;
+  return { x0: xOf(bars[p.bar]), x1: xOf(bars[p.bar + p.bars]), y0: RULER, y1: tl.h - 4 };
+}
+
+function draw() {
+  if (!tl || !tl.cv.isConnected) return;
+  const t = tl.t, a = analysis[t], g = tl.cv.getContext('2d'), W = tl.w, H = tl.h;
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = INK; g.fillRect(0, 0, W, H);
+  // rubato zone
+  if (a.free_until) { g.fillStyle = 'rgba(255,255,255,.05)'; g.fillRect(L0, RULER, xOf(a.free_until) - L0, H - RULER); }
+  // bar grid + numbers
+  g.font = '600 11px "Avenir Next Condensed", "Arial Narrow", sans-serif';
+  g.textBaseline = 'middle';
+  const every = (W - L0) / (a.bars.length) < 9 ? 8 : 4;
+  a.bars.forEach((b, k) => {
+    const x = xOf(b);
+    g.fillStyle = k % every === 0 ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.1)';
+    g.fillRect(Math.round(x), RULER - (k % every === 0 ? 8 : 4), 1, H - RULER + (k % every === 0 ? 8 : 4));
+    if (k % every === 0 && k < a.bars.length - 1) { g.fillStyle = 'rgba(253,253,253,.75)'; g.fillText(String(k), x + 2, 8); }
+  });
+  // stems: per-bar levels
+  stemsOf(t).forEach((i, r) => {
+    const y = RULER + PARTS_H + r * ROW;
+    g.fillStyle = PAPER; g.font = '700 13px "Avenir Next Condensed", "Arial Narrow", sans-serif';
+    g.fillText(NAME[i], 6, y + ROW / 2);
+    const lv = levels[t] && levels[t][i];
+    if (!lv) return;
+    for (let k = 0; k < lv.length; k++) {
+      const x0 = xOf(a.bars[k]), x1 = xOf(a.bars[k + 1]), v = Math.min(1, lv[k]);
+      const hh = (ROW - 8) * v;
+      g.fillStyle = v > 0.25 ? 'rgba(253,253,253,.85)' : 'rgba(253,253,253,.3)';
+      g.fillRect(x0 + 0.5, y + ROW - 4 - hh, Math.max(1, x1 - x0 - 1), hh);
+    }
+  });
+  // where "add" will put a part
+  if (selected && selected.track === t && selected.bar != null) {
+    const x = xOf(a.bars[selected.bar]);
+    g.fillStyle = ORANGE; g.fillRect(x - 1, RULER, 3, H - RULER);
+  }
+  // parts
+  work[t].forEach((p, n) => {
+    const r = partRect(p), info = infoOf(t, p);
+    const playing = player && player.track === t && player.part === p;
+    const sel = selected && selected.part === p;
+    g.fillStyle = playing ? 'rgba(220,141,78,.45)' : sel ? 'rgba(220,141,78,.3)' : 'rgba(220,141,78,.18)';
+    g.fillRect(r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0);
+    g.fillStyle = ORANGE;
+    g.fillRect(r.x0, r.y0, r.x1 - r.x0, PARTS_H - 4);
+    g.fillRect(r.x0, r.y0, 3, r.y1 - r.y0); g.fillRect(r.x1 - 3, r.y0, 3, r.y1 - r.y0);
+    g.fillStyle = PAPER; g.font = '800 15px "Avenir Next Condensed", "Arial Narrow", sans-serif';
+    g.fillText(`${n + 1}${info && info.all ? ' ★' : ''}`, r.x0 + 6, r.y0 + (PARTS_H - 4) / 2);
+  });
+  // playhead
+  if (player && player.track === t) {
+    const len = player.b - player.a, pos = player.a + ((ctx.currentTime - player.t0) % len + len) % len;
+    const x = xOf(pos);
+    g.fillStyle = PAPER; g.fillRect(x - 1, RULER, 2, H - RULER);
+  }
+}
+(function frame() { if (player) draw(); requestAnimationFrame(frame); })();
+
+// --- dragging: a part's body moves it, its edges resize it; on bar lines ---
+let drag = null;
+function hit(x, y) {
+  if (y < RULER) return null;
+  const list = work[tl.t];
+  for (let n = list.length - 1; n >= 0; n--) {
+    const r = partRect(list[n]);
+    if (x >= r.x0 - 6 && x <= r.x1 + 6) {
+      if (Math.abs(x - r.x0) <= 7) return { part: list[n], mode: 'start' };
+      if (Math.abs(x - r.x1) <= 7) return { part: list[n], mode: 'end' };
+      if (x > r.x0 && x < r.x1) return { part: list[n], mode: 'move' };
+    }
+  }
+  return null;
+}
+function local(e) { const b = tl.cv.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; }
+function pointerDown(e) {
+  const { x, y } = local(e), h = hit(x, y);
+  if (h) {
+    drag = { ...h, x0: x, bar0: h.part.bar, bars0: h.part.bars, moved: false };
+    selected = { track: tl.t, part: h.part };
+    tl.cv.setPointerCapture(e.pointerId);
+  } else if (x > L0) {
+    selected = { track: tl.t, bar: barAt(x) };
+  }
+  draw(); refreshTable();
+}
+function pointerMove(e) {
+  const { x, y } = local(e);
+  if (!drag) {
+    const h = hit(x, y);
+    tl.cv.style.cursor = !h ? (x > L0 ? 'crosshair' : 'default') : h.mode === 'move' ? 'grab' : 'ew-resize';
+    return;
+  }
+  const n = analysis[tl.t].bars.length - 1, p = drag.part, k = barAt(x), k0 = barAt(drag.x0);
+  if (drag.mode === 'move') { p.bar = Math.max(0, Math.min(n - p.bars, drag.bar0 + (k - k0))); }
+  else if (drag.mode === 'start') {
+    const end = drag.bar0 + drag.bars0, s = Math.max(0, Math.min(end - 1, k));
+    p.bar = s; p.bars = end - s;
+  } else { const e2 = Math.max(p.bar + 1, Math.min(n, k)); p.bars = e2 - p.bar; }
+  drag.moved = drag.moved || p.bar !== drag.bar0 || p.bars !== drag.bars0;
+  draw();
+}
+function pointerUp() {
+  if (!drag) return;
+  const p = drag.part, moved = drag.moved;
+  drag = null;
+  if (moved) changed(tl.t, p);
+}
+
+// a part changed: keep the list in song order, restart it if it plays
+function changed(t, p) {
+  sortParts(work[t]);
+  if (player && player.track === t && player.part === p) play(t, p);
+  render();
+}
+
+// --- the parts' table ---
+function table(t) {
+  const tb = document.createElement('table');
+  tb.className = 'parts';
+  tb.dataset.track = t;
+  fillTable(t, tb);
+  return tb;
+}
+function refreshTable() {
+  const tb = document.querySelector(`table.parts[data-track="${open}"]`);
+  if (tb) fillTable(open, tb);
+}
+function fillTable(t, tb) {
+  const a = analysis[t], n = a.bars.length - 1;
+  tb.innerHTML = '';
+  work[t].forEach((p, idx) => {
+    const tr = document.createElement('tr');
+    const info = infoOf(t, p), playing = player && player.track === t && player.part === p;
+    if (playing) tr.className = 'playing';
+    if (selected && selected.part === p) tr.classList.add('selected');
+    const td = (cls) => { const c = document.createElement('td'); if (cls) c.className = cls; tr.append(c); return c; };
+    td('num').innerHTML = `${idx + 1}${info && info.all ? ' <span class="star">★</span>' : ''}`;
+    td().append(btn(playing ? '■' : '▶', () => (playing ? stop() : play(t, p)), playing ? 'Arrêter' : 'Jouer en boucle'));
+    const small = td('small');
+    const edit = (fn) => () => { fn(); changed(t, p); };
+    small.append(
+      btn('◀', edit(() => { p.bar = Math.max(0, p.bar - 1); }), 'Une mesure plus tôt'),
+      btn('▶', edit(() => { p.bar = Math.min(n - p.bars, p.bar + 1); }), 'Une mesure plus tard'),
+      document.createTextNode(' '),
+      btn('−', edit(() => { p.bars = Math.max(1, p.bars - 1); }), 'Fin une mesure plus tôt'),
+      btn('+', edit(() => { p.bars = Math.min(n - p.bar, p.bars + 1); }), 'Fin une mesure plus tard'),
+    );
+    td('bars').textContent = `mesures ${p.bar}–${p.bar + p.bars} (${p.bars}) · ${mmss(a.bars[p.bar])}–${mmss(a.bars[p.bar + p.bars])}`;
+    td('who').textContent = info ? `joue : ${info.playing.map((i) => NAME[i].toLowerCase()).join(', ') || '—'}` : 'modifiée (recalculé à la régénération)';
+    const stems = td('stems');
+    if (playing) {
+      for (const i of stemsOf(t)) {
+        const b = btn(NAME[i], () => { player.mute[i] = !player.mute[i]; player.solo = null; applyGains(); refreshTable(); }, 'Couper / remettre');
+        b.className = player.solo === i ? 'solo' : player.mute[i] ? 'muted' : '';
+        b.ondblclick = () => { player.solo = player.solo === i ? null : i; applyGains(); refreshTable(); };
+        b.title = 'Clic : couper / remettre · double-clic : seule';
+        stems.append(b);
+      }
+    }
+    const del = btn('✕', () => { if (playing) stop(); work[t].splice(work[t].indexOf(p), 1); render(); }, 'Supprimer la partie');
+    del.className = 'ghost';
+    td().append(del);
+    tb.append(tr);
+  });
+}
+
+function addPart(t) {
+  const a = analysis[t], n = a.bars.length - 1;
+  let bar = selected && selected.track === t && selected.bar != null ? selected.bar
+    : work[t].length ? Math.min(n - 1, work[t][work[t].length - 1].bar + work[t][work[t].length - 1].bars) : 0;
+  const bars = Math.max(1, Math.min(8, n - bar));
+  bar = Math.min(bar, n - bars);
+  const p = { bar, bars };
+  work[t].push(p);
+  selected = { track: t, part: p };
+  changed(t, p);
+}
+
+// --- playback: the part's stems together, sample-aligned, looped ---
+function play(t, p) {
+  stop(false);
+  if (!buffers[t]) return;
+  ctx.resume();
+  const bars = analysis[t].bars, a = bars[p.bar], b = bars[p.bar + p.bars];
+  const t0 = ctx.currentTime + 0.06;
+  const sources = {}, gains = {};
+  for (const i of stemsOf(t)) {
+    const src = ctx.createBufferSource();
+    src.buffer = buffers[t][i]; src.loop = true; src.loopStart = a; src.loopEnd = b;
+    const gn = ctx.createGain(); src.connect(gn).connect(master);
+    src.start(t0, a);
+    sources[i] = src; gains[i] = gn;
+  }
+  const keep = player && player.track === t ? { mute: player.mute, solo: player.solo } : { mute: {}, solo: null };
+  player = { track: t, part: p, sources, gains, t0, a, b, ...keep };
+  applyGains();
+  status(`${analysis[t].title}, partie ${work[t].indexOf(p) + 1} : mesures ${p.bar}–${p.bar + p.bars} en boucle.`);
+  refreshTable(); draw();
+}
+function applyGains() {
+  if (!player) return;
+  for (const [i, g] of Object.entries(player.gains)) {
+    const on = player.solo ? player.solo === i : !player.mute[i];
+    g.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.015);
+  }
+}
+function stop(redraw = true) {
+  if (!player) return;
+  for (const s of Object.values(player.sources)) { try { s.stop(); } catch (e) { /* not started */ } }
+  const t = player.track;
+  player = null;
+  if (redraw) { refreshTable(); draw(); status('Arrêté.'); if (open !== t) release(t); }
+}
+function stopIfTrack(t) { if (player && player.track === t) stop(); }
+$('#stop').onclick = () => stop();
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); stop(); }
+});
+
+// --- save, regenerate ---
+function edits() {
+  const out = {};
+  for (const t of Object.keys(analysis)) {
+    if (same(work[t], autoParts(t))) continue; // the analysis' own: nothing to keep
+    out[t] = work[t].map((p) => ({ bar: p.bar, bars: p.bars }));
+  }
+  return out;
+}
+async function save() {
+  const body = edits();
+  const r = await fetch('/save-parts', { method: 'POST', body: JSON.stringify(body) });
+  if (!r.ok) { status(`Enregistrement refusé : ${r.status}`); return false; }
+  saved = body;
+  render();
+  status(`Enregistré : ${Object.keys(body).length} chanson(s) éditée(s). Régénérez pour recouper les fichiers.`);
+  return true;
+}
+$('#save').onclick = save;
+$('#regen').onclick = async () => {
+  const b = $('#regen'); b.disabled = true; $('#save').disabled = true;
+  stop();
+  status('Régénération : application des parties, découpe, tuiles… (1 à 3 minutes)');
+  const log = $('#log'); log.hidden = false; log.textContent = '…';
+  try {
+    const r = await fetch('/regenerate', { method: 'POST', body: JSON.stringify(edits()) });
+    const res = await r.json().catch(() => ({ ok: false, log: `HTTP ${r.status}` }));
+    log.textContent = res.log;
+    status(res.ok ? 'Régénéré : fichiers recoupés, tuiles refaites. (make upload avant de recoller la tuile en ligne)' : `Échec de la régénération (${r.status}) : voir le journal.`);
+    const keepOpen = open;
+    await load();
+    if (keepOpen) { open = keepOpen; render(); await decode(keepOpen); render(); }
+  } catch (e) {
+    status(`Échec : ${e.message}`);
+  } finally { b.disabled = false; render(); }
+};
+
+window.addEventListener('beforeunload', (e) => { if (Object.keys(analysis).some(isDirty)) { e.preventDefault(); e.returnValue = ''; } });
+window.editor = { get analysis() { return analysis; }, get work() { return work; }, get player() { return player; }, get open() { return open; }, toggle, play, stop, save, xOf: (s) => xOf(s), partRect: (p) => partRect(p), get tl() { return tl; } };
+load();
+</script>
+</body>
+</html>

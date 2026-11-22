@@ -1,7 +1,7 @@
 # Pinkasol playground. `make` alone builds the tile.
 PY := tools/.venv/bin/python
 
-.PHONY: tile tile-local serve serve-lan venv analyse parts edges audio upload upload-dry cover
+.PHONY: tile tile-local serve serve-lan venv analyse parts edges audio upload upload-dry cover editor regenerate
 
 # The Tilefolio code tile: dist/pinkasol-tile.html, to paste in the code
 # panel (tick p5.js). Rebuilt from duo.html, lib/pinkasol-engine.js and the
@@ -53,3 +53,16 @@ upload-dry:
 # duo.html's shapes; needs serve.py running and `npm install`
 cover:
 	$(NODE) tools/cover.mjs
+
+# The parts editor (parts.html): choose each song's loops on its stems,
+# snapped to bars. Needs serve.py running
+editor:
+	@echo "http://localhost:8121/parts.html   (python3 serve.py must be running)"
+
+# The editor's edits (audio/parts-edit.json) into the analysis, the cut,
+# both tiles (what its "Régénérer" button does). Then make upload
+regenerate: venv
+	$(PY) -W ignore tools/apply_edits.py
+	$(PY) tools/cut.py
+	python3 tools/build.py --local
+	python3 tools/build.py
