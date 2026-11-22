@@ -1,7 +1,8 @@
-# Pinkasol playground
+# Remix Pinkasol !
 
 An interactive way into *Pinkasol*, the third album of the duo
-[Picasol](https://picasol.fr) (piano; drums and synth): **La table du duo**.
+[Picasol](https://picasol.fr) (piano; drums and synth): **Remix Pinkasol !**, a table where the duo's
+instruments wait for the tracks.
 The ten tracks are cards; drop one on the piano, the drums, the synth or the
 bass and that instrument plays its part of the track. Mix tracks, or
 double-click a card to hear the track as recorded. Clicks and drag-and-drop
@@ -66,7 +67,7 @@ It plays in Tilefolio only once:
 ## Pages
 
     index.html        menu
-    duo.html          La table du duo
+    duo.html          Remix Pinkasol ! (the table)
     picker.html       workshop: audition the analyser's candidate loops
     engine-test.html  engine smoke test
     attic/            two earlier experiments (a sky of planets, a collage)
