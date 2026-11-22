@@ -41,10 +41,10 @@ upload a still, create. 77 KB of the 200 KB a code tile allows.
                       # http://localhost:8121/dist/pinkasol-tile.local.html
 
 It plays in Tilefolio only once:
-1. the code tile is live (Tilefolio PR #796, `BOX_URL` set);
-2. the box lets a tile fetch its site's media (`connect-src` = the media
-   library, like `img-src`/`media-src` already): today it fetches nothing;
-3. the part files (`audio/pieces/`, 207 MP3, 62 MB) are in picasol.fr's media
+1. the code tile is live: Tilefolio PR #796 (merged and deployed, with the
+   box's `connect-src` = the site's media library, so the tile can fetch its
+   audio), and `BOX_URL` set on the server;
+2. the part files (`audio/pieces/`, 207 MP3, 62 MB) are in picasol.fr's media
    library, and `audio/media-urls.json` maps each one to its address
    (`{ "01_Rototo/p1-drums.mp3": "https://media.tilefolio.com/i1/…" }`); then
    `make tile` again. Until then the build warns and the tile stays silent.
