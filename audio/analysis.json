@@ -13,17 +13,18 @@
   "meter": 4,
   "parts": [
    {
-    "bar": 1,
-    "bars": 8,
-    "start": 3.146,
-    "end": 19.383,
+    "bar": 4,
+    "bars": 4,
+    "start": 9.253,
+    "end": 17.345,
     "playing": [
      "drums",
      "bass",
      "piano"
     ],
-    "all": false,
-    "loop": 3.14
+    "all": true,
+    "all_auto": true,
+    "edited": true
    },
    {
     "bar": 29,
@@ -36,19 +37,9 @@
      "piano"
     ],
     "all": true,
-    "loop": 3.16
-   },
-   {
-    "bar": 58,
-    "bars": 4,
-    "start": 119.055,
-    "end": 126.99,
-    "playing": [
-     "drums",
-     "piano"
-    ],
-    "all": false,
-    "loop": 2.55
+    "all_auto": true,
+    "edited": true,
+    "star": true
    },
    {
     "bar": 67,
@@ -60,31 +51,21 @@
      "piano"
     ],
     "all": false,
-    "loop": 2.46
+    "all_auto": false,
+    "edited": true
    },
    {
     "bar": 84,
-    "bars": 4,
+    "bars": 5,
     "start": 170.58,
-    "end": 178.631,
+    "end": 180.582,
     "playing": [
      "piano",
      "synth"
     ],
     "all": false,
-    "loop": 0.54
-   },
-   {
-    "bar": 88,
-    "bars": 8,
-    "start": 178.631,
-    "end": 194.519,
-    "playing": [
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 0.32
+    "all_auto": false,
+    "edited": true
    }
   ],
   "tempo": 117.45,
@@ -314,7 +295,83 @@
      "score": 0.795
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 1,
+    "bars": 8,
+    "start": 3.146,
+    "end": 19.383,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.14
+   },
+   {
+    "bar": 29,
+    "bars": 8,
+    "start": 59.391,
+    "end": 75.442,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": true,
+    "loop": 3.16
+   },
+   {
+    "bar": 58,
+    "bars": 4,
+    "start": 119.055,
+    "end": 126.99,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.55
+   },
+   {
+    "bar": 67,
+    "bars": 8,
+    "start": 137.009,
+    "end": 152.625,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.46
+   },
+   {
+    "bar": 84,
+    "bars": 4,
+    "start": 170.58,
+    "end": 178.631,
+    "playing": [
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 0.54
+   },
+   {
+    "bar": 88,
+    "bars": 8,
+    "start": 178.631,
+    "end": 194.519,
+    "playing": [
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 0.32
+   }
+  ]
  },
  "02_Arroyoyo": {
   "title": "Arroyoyo",
@@ -330,17 +387,19 @@
   "meter": 4,
   "parts": [
    {
-    "bar": 17,
+    "bar": 16,
     "bars": 4,
-    "start": 30.378,
-    "end": 37.158,
+    "start": 28.561,
+    "end": 35.439,
     "playing": [
      "drums",
      "bass",
      "piano"
     ],
     "all": true,
-    "loop": 3.32
+    "all_auto": true,
+    "edited": true,
+    "star": true
    },
    {
     "bar": 24,
@@ -352,8 +411,10 @@
      "bass",
      "piano"
     ],
-    "all": false,
-    "loop": 3.19
+    "all": true,
+    "all_auto": true,
+    "edited": true,
+    "star": true
    },
    {
     "bar": 58,
@@ -365,33 +426,23 @@
      "piano"
     ],
     "all": false,
-    "loop": 2.83
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 89,
-    "bars": 4,
-    "start": 158.563,
+    "bar": 88,
+    "bars": 5,
+    "start": 156.758,
     "end": 165.523,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
-    "all": false,
-    "loop": 2.53
-   },
-   {
-    "bar": 95,
-    "bars": 4,
-    "start": 168.943,
-    "end": 175.972,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
     "all": true,
-    "loop": 2.99
+    "all_auto": true,
+    "edited": true,
+    "star": true
    }
   ],
   "tempo": 136.0,
@@ -638,7 +689,73 @@
      "score": 1.123
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 17,
+    "bars": 4,
+    "start": 30.378,
+    "end": 37.158,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": true,
+    "loop": 3.32
+   },
+   {
+    "bar": 24,
+    "bars": 4,
+    "start": 42.603,
+    "end": 49.424,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.19
+   },
+   {
+    "bar": 58,
+    "bars": 8,
+    "start": 102.725,
+    "end": 117.447,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.83
+   },
+   {
+    "bar": 89,
+    "bars": 4,
+    "start": 158.563,
+    "end": 165.523,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 2.53
+   },
+   {
+    "bar": 95,
+    "bars": 4,
+    "start": 168.943,
+    "end": 175.972,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 2.99
+   }
+  ]
  },
  "03_Clarita": {
   "title": "Clarita",
@@ -653,26 +770,28 @@
   "meter": 4,
   "parts": [
    {
-    "bar": 0,
-    "bars": 8,
-    "start": 0.07,
-    "end": 16.028,
+    "bar": 0.5,
+    "bars": 4,
+    "start": 1.039,
+    "end": 9.004,
     "playing": [
      "piano"
     ],
     "all": false,
-    "loop": 0.28
+    "all_auto": false,
+    "edited": true
    },
    {
     "bar": 25,
-    "bars": 8,
+    "bars": 5.5,
     "start": 50.022,
-    "end": 65.927,
+    "end": 61.039,
     "playing": [
      "piano"
     ],
     "all": false,
-    "loop": 0.24
+    "all_auto": false,
+    "edited": true
    },
    {
     "bar": 56,
@@ -683,45 +802,35 @@
      "drums"
     ],
     "all": false,
-    "loop": 2.28
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 80,
-    "bars": 8,
-    "start": 158.54,
-    "end": 174.556,
+    "bar": 81,
+    "bars": 4,
+    "start": 160.491,
+    "end": 168.519,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
     "all": true,
-    "loop": 2.83
-   },
-   {
-    "bar": 88,
-    "bars": 8,
-    "start": 174.556,
-    "end": 190.578,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 2.78
+    "all_auto": true,
+    "edited": true
    },
    {
     "bar": 108,
-    "bars": 8,
+    "bars": 4,
     "start": 214.291,
-    "end": 230.29,
+    "end": 222.279,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 3.14
+    "all_auto": false,
+    "edited": true
    }
   ],
   "tempo": 123.05,
@@ -948,7 +1057,80 @@
      "score": 0.54
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 0,
+    "bars": 8,
+    "start": 0.07,
+    "end": 16.028,
+    "playing": [
+     "piano"
+    ],
+    "all": false,
+    "loop": 0.28
+   },
+   {
+    "bar": 25,
+    "bars": 8,
+    "start": 50.022,
+    "end": 65.927,
+    "playing": [
+     "piano"
+    ],
+    "all": false,
+    "loop": 0.24
+   },
+   {
+    "bar": 56,
+    "bars": 4,
+    "start": 111.026,
+    "end": 119.066,
+    "playing": [
+     "drums"
+    ],
+    "all": false,
+    "loop": 2.28
+   },
+   {
+    "bar": 80,
+    "bars": 8,
+    "start": 158.54,
+    "end": 174.556,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 2.83
+   },
+   {
+    "bar": 88,
+    "bars": 8,
+    "start": 174.556,
+    "end": 190.578,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 2.78
+   },
+   {
+    "bar": 108,
+    "bars": 8,
+    "start": 214.291,
+    "end": 230.29,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.14
+   }
+  ]
  },
  "04_Noisette": {
   "title": "Noisette",
@@ -964,54 +1146,58 @@
   "meter": 4,
   "parts": [
    {
-    "bar": 6,
-    "bars": 8,
-    "start": 15.673,
-    "end": 35.265,
+    "bar": 8,
+    "bars": 4,
+    "start": 20.544,
+    "end": 30.412,
     "playing": [
      "drums",
      "bass",
      "piano"
     ],
     "all": true,
-    "loop": 3.21
+    "all_auto": true,
+    "edited": true
    },
    {
     "bar": 16,
-    "bars": 8,
+    "bars": 2,
     "start": 40.171,
-    "end": 59.751,
+    "end": 45.064,
     "playing": [
      "drums",
      "bass",
      "piano"
     ],
-    "all": false,
-    "loop": 3.06
+    "all": true,
+    "all_auto": true,
+    "edited": true
    },
    {
-    "bar": 38,
+    "bar": 32,
     "bars": 8,
-    "start": 94.018,
-    "end": 113.598,
+    "start": 79.325,
+    "end": 98.923,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 2.64
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 51,
+    "bar": 52,
     "bars": 8,
-    "start": 125.98,
-    "end": 146.042,
+    "start": 128.546,
+    "end": 148.497,
     "playing": [
      "piano",
      "synth"
     ],
     "all": false,
-    "loop": 0.48
+    "all_auto": false,
+    "edited": true
    },
    {
     "bar": 77,
@@ -1024,20 +1210,8 @@
      "synth"
     ],
     "all": true,
-    "loop": 3.19
-   },
-   {
-    "bar": 91,
-    "bars": 4,
-    "start": 225.025,
-    "end": 234.951,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 3.07
+    "all_auto": true,
+    "edited": true
    }
   ],
   "tempo": 95.7,
@@ -1265,7 +1439,85 @@
      "score": 1.031
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 6,
+    "bars": 8,
+    "start": 15.673,
+    "end": 35.265,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": true,
+    "loop": 3.21
+   },
+   {
+    "bar": 16,
+    "bars": 8,
+    "start": 40.171,
+    "end": 59.751,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.06
+   },
+   {
+    "bar": 38,
+    "bars": 8,
+    "start": 94.018,
+    "end": 113.598,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.64
+   },
+   {
+    "bar": 51,
+    "bars": 8,
+    "start": 125.98,
+    "end": 146.042,
+    "playing": [
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 0.48
+   },
+   {
+    "bar": 77,
+    "bars": 8,
+    "start": 190.2,
+    "end": 210.123,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 3.19
+   },
+   {
+    "bar": 91,
+    "bars": 4,
+    "start": 225.025,
+    "end": 234.951,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.07
+   }
+  ]
  },
  "05_Malavista": {
   "title": "Malavista",
@@ -1282,42 +1534,29 @@
   "parts": [
    {
     "bar": 2,
-    "bars": 4,
+    "bars": 2,
     "start": 6.827,
-    "end": 20.503,
+    "end": 13.653,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 2.98
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 13,
+    "bar": 22,
     "bars": 4,
-    "start": 44.426,
-    "end": 58.137,
+    "start": 75.227,
+    "end": 88.909,
     "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 2.99
-   },
-   {
-    "bar": 31,
-    "bars": 4,
-    "start": 106.046,
-    "end": 119.74,
-    "playing": [
-     "drums",
      "bass",
-     "piano",
-     "synth"
+     "piano"
     ],
     "all": false,
-    "loop": 3.36
+    "all_auto": false,
+    "edited": true
    },
    {
     "bar": 36,
@@ -1331,7 +1570,9 @@
      "synth"
     ],
     "all": true,
-    "loop": 3.4
+    "all_auto": true,
+    "edited": true,
+    "star": true
    }
   ],
   "tempo": 234.91,
@@ -1505,7 +1746,62 @@
      "score": 0.439
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 2,
+    "bars": 4,
+    "start": 6.827,
+    "end": 20.503,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.98
+   },
+   {
+    "bar": 13,
+    "bars": 4,
+    "start": 44.426,
+    "end": 58.137,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 2.99
+   },
+   {
+    "bar": 31,
+    "bars": 4,
+    "start": 106.046,
+    "end": 119.74,
+    "playing": [
+     "drums",
+     "bass",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.36
+   },
+   {
+    "bar": 36,
+    "bars": 4,
+    "start": 123.164,
+    "end": 136.829,
+    "playing": [
+     "drums",
+     "bass",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 3.4
+   }
+  ]
  },
  "06_Exit_B": {
   "title": "Exit B",
@@ -1523,80 +1819,60 @@
   "bpm_by_ear": true,
   "parts": [
    {
-    "bar": 1,
+    "bar": 1.25,
     "bars": 8,
-    "start": 23.824,
-    "end": 39.068,
+    "start": 24.3,
+    "end": 39.532,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 2.77
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 33,
+    "bar": 33.25,
     "bars": 8,
-    "start": 84.573,
-    "end": 99.55,
+    "start": 85.037,
+    "end": 100.003,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 3.05
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 62,
+    "bar": 57.25,
     "bars": 8,
-    "start": 138.443,
-    "end": 153.199,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 3.21
-   },
-   {
-    "bar": 80,
-    "bars": 8,
-    "start": 171.961,
-    "end": 187.176,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 3.18
-   },
-   {
-    "bar": 88,
-    "bars": 8,
-    "start": 187.176,
-    "end": 202.437,
+    "start": 129.649,
+    "end": 144.446,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
     "all": true,
-    "loop": 3.33
+    "all_auto": true,
+    "edited": true,
+    "star": true
    },
    {
-    "bar": 109,
-    "bars": 4,
-    "start": 226.83,
-    "end": 234.504,
+    "bar": 80,
+    "bars": 7.5,
+    "start": 171.961,
+    "end": 186.236,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
-    "all": false,
-    "loop": 2.94
+    "all": true,
+    "all_auto": true,
+    "edited": true,
+    "star": true
    }
   ],
   "tempo": 127.0,
@@ -1826,7 +2102,85 @@
      "score": 0.93
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 1,
+    "bars": 8,
+    "start": 23.824,
+    "end": 39.068,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.77
+   },
+   {
+    "bar": 33,
+    "bars": 8,
+    "start": 84.573,
+    "end": 99.55,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.05
+   },
+   {
+    "bar": 62,
+    "bars": 8,
+    "start": 138.443,
+    "end": 153.199,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.21
+   },
+   {
+    "bar": 80,
+    "bars": 8,
+    "start": 171.961,
+    "end": 187.176,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.18
+   },
+   {
+    "bar": 88,
+    "bars": 8,
+    "start": 187.176,
+    "end": 202.437,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 3.33
+   },
+   {
+    "bar": 109,
+    "bars": 4,
+    "start": 226.83,
+    "end": 234.504,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 2.94
+   }
+  ]
  },
  "07_Asperges": {
   "title": "Asperges",
@@ -1843,78 +2197,59 @@
   "parts": [
    {
     "bar": 4,
-    "bars": 8,
+    "bars": 4,
     "start": 8.052,
-    "end": 24.056,
+    "end": 16.045,
     "playing": [
      "bass",
      "piano"
     ],
     "all": false,
-    "loop": 0.49
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 38,
-    "bars": 8,
-    "start": 76.539,
-    "end": 92.52,
+    "bar": 36.25,
+    "bars": 4,
+    "start": 73.009,
+    "end": 81.02,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 2.96
-   },
-   {
-    "bar": 49,
-    "bars": 8,
-    "start": 98.58,
-    "end": 114.55,
-    "playing": [
-     "drums",
-     "piano"
-    ],
-    "all": false,
-    "loop": 3.0
+    "all_auto": false,
+    "edited": true
    },
    {
     "bar": 80,
-    "bars": 8,
+    "bars": 6,
     "start": 161.054,
-    "end": 177.058,
+    "end": 173.058,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
     "all": true,
-    "loop": 3.19
+    "all_auto": true,
+    "edited": true,
+    "star": true
    },
    {
-    "bar": 105,
-    "bars": 8,
-    "start": 211.058,
-    "end": 227.045,
+    "bar": 108,
+    "bars": 4,
+    "start": 217.049,
+    "end": 225.03,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
-    "all": false,
-    "loop": 3.07
-   },
-   {
-    "bar": 119,
-    "bars": 8,
-    "start": 239.055,
-    "end": 255.036,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 2.68
+    "all": true,
+    "all_auto": true,
+    "edited": true,
+    "star": true
    },
    {
     "bar": 128,
@@ -1926,7 +2261,8 @@
      "piano"
     ],
     "all": false,
-    "loop": 0.56
+    "all_auto": false,
+    "edited": true
    }
   ],
   "tempo": 117.45,
@@ -2205,7 +2541,96 @@
      "score": 1.187
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 4,
+    "bars": 8,
+    "start": 8.052,
+    "end": 24.056,
+    "playing": [
+     "bass",
+     "piano"
+    ],
+    "all": false,
+    "loop": 0.49
+   },
+   {
+    "bar": 38,
+    "bars": 8,
+    "start": 76.539,
+    "end": 92.52,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.96
+   },
+   {
+    "bar": 49,
+    "bars": 8,
+    "start": 98.58,
+    "end": 114.55,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.0
+   },
+   {
+    "bar": 80,
+    "bars": 8,
+    "start": 161.054,
+    "end": 177.058,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 3.19
+   },
+   {
+    "bar": 105,
+    "bars": 8,
+    "start": 211.058,
+    "end": 227.045,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.07
+   },
+   {
+    "bar": 119,
+    "bars": 8,
+    "start": 239.055,
+    "end": 255.036,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 2.68
+   },
+   {
+    "bar": 128,
+    "bars": 8,
+    "start": 257.138,
+    "end": 273.293,
+    "playing": [
+     "bass",
+     "piano"
+    ],
+    "all": false,
+    "loop": 0.56
+   }
+  ]
  },
  "08_Pinkasol": {
   "title": "Pinkasol",
@@ -2221,68 +2646,46 @@
   "meter": 4,
   "parts": [
    {
-    "bar": 14,
+    "bar": 12.5,
     "bars": 4,
-    "start": 28.026,
-    "end": 36.026,
+    "start": 24.967,
+    "end": 33.048,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 2.76
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 28,
+    "bar": 28.5,
     "bars": 8,
-    "start": 56.018,
-    "end": 71.999,
+    "start": 57.011,
+    "end": 72.998,
     "playing": [
      "drums",
      "bass",
      "piano"
     ],
     "all": true,
-    "loop": 3.12
+    "all_auto": true,
+    "edited": true
    },
    {
-    "bar": 47,
+    "bar": 98,
     "bars": 8,
-    "start": 94.012,
-    "end": 110.005,
-    "playing": [
-     "drums",
-     "bass",
-     "piano"
-    ],
-    "all": false,
-    "loop": 3.09
-   },
-   {
-    "bar": 91,
-    "bars": 8,
-    "start": 179.554,
-    "end": 194.647,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 2.8
-   },
-   {
-    "bar": 102,
-    "bars": 8,
-    "start": 200.214,
-    "end": 214.86,
+    "start": 192.731,
+    "end": 207.488,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
     "all": true,
-    "loop": 2.97
+    "all_auto": true,
+    "edited": true,
+    "star": true
    }
   ],
   "tempo": 123.05,
@@ -2529,7 +2932,73 @@
      "score": 1.171
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 14,
+    "bars": 4,
+    "start": 28.026,
+    "end": 36.026,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.76
+   },
+   {
+    "bar": 28,
+    "bars": 8,
+    "start": 56.018,
+    "end": 71.999,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": true,
+    "loop": 3.12
+   },
+   {
+    "bar": 47,
+    "bars": 8,
+    "start": 94.012,
+    "end": 110.005,
+    "playing": [
+     "drums",
+     "bass",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.09
+   },
+   {
+    "bar": 91,
+    "bars": 8,
+    "start": 179.554,
+    "end": 194.647,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 2.8
+   },
+   {
+    "bar": 102,
+    "bars": 8,
+    "start": 200.214,
+    "end": 214.86,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 2.97
+   }
+  ]
  },
  "09_Cosmos": {
   "title": "Cosmos",
@@ -2544,76 +3013,57 @@
   "meter": 4,
   "parts": [
    {
-    "bar": 12,
-    "bars": 8,
-    "start": 31.695,
-    "end": 51.281,
+    "bar": 7.5,
+    "bars": 2,
+    "start": 20.741,
+    "end": 25.6,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 3.12
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 20,
-    "bars": 4,
-    "start": 51.281,
-    "end": 61.022,
-    "playing": [
-     "drums",
-     "piano"
-    ],
-    "all": false,
-    "loop": 2.81
-   },
-   {
-    "bar": 52,
-    "bars": 8,
-    "start": 129.149,
-    "end": 148.747,
-    "playing": [
-     "piano"
-    ],
-    "all": false,
-    "loop": 0.24
-   },
-   {
-    "bar": 75,
-    "bars": 8,
-    "start": 185.272,
-    "end": 204.521,
+    "bar": 59.75,
+    "bars": 4.25,
+    "start": 147.981,
+    "end": 158.656,
     "playing": [
      "piano",
      "synth"
     ],
     "all": false,
-    "loop": 0.4
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 86,
-    "bars": 8,
-    "start": 211.859,
-    "end": 231.468,
+    "bar": 74.25,
+    "bars": 7.75,
+    "start": 183.409,
+    "end": 202.077,
     "playing": [
-     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "all_auto": false,
+    "edited": true
+   },
+   {
+    "bar": 82,
+    "bars": 8,
+    "start": 202.077,
+    "end": 221.687,
+    "playing": [
      "piano",
      "synth"
     ],
     "all": true,
-    "loop": 3.22
-   },
-   {
-    "bar": 100,
-    "bars": 8,
-    "start": 246.12,
-    "end": 265.77,
-    "playing": [
-     "drums",
-     "piano"
-    ],
-    "all": false,
-    "loop": 3.01
+    "all_auto": false,
+    "edited": true,
+    "star": true
    }
   ],
   "tempo": 99.38,
@@ -2829,7 +3279,81 @@
      "score": 1.101
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 12,
+    "bars": 8,
+    "start": 31.695,
+    "end": 51.281,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.12
+   },
+   {
+    "bar": 20,
+    "bars": 4,
+    "start": 51.281,
+    "end": 61.022,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.81
+   },
+   {
+    "bar": 52,
+    "bars": 8,
+    "start": 129.149,
+    "end": 148.747,
+    "playing": [
+     "piano"
+    ],
+    "all": false,
+    "loop": 0.24
+   },
+   {
+    "bar": 75,
+    "bars": 8,
+    "start": 185.272,
+    "end": 204.521,
+    "playing": [
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 0.4
+   },
+   {
+    "bar": 86,
+    "bars": 8,
+    "start": 211.859,
+    "end": 231.468,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 3.22
+   },
+   {
+    "bar": 100,
+    "bars": 8,
+    "start": 246.12,
+    "end": 265.77,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 3.01
+   }
+  ]
  },
  "10_El_Tigre": {
   "title": "El Tigre",
@@ -2844,93 +3368,46 @@
   "meter": 4,
   "parts": [
    {
-    "bar": 17,
-    "bars": 8,
-    "start": 31.956,
-    "end": 46.829,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 2.75
-   },
-   {
-    "bar": 44,
-    "bars": 8,
-    "start": 81.496,
-    "end": 96.073,
-    "playing": [
-     "drums",
-     "piano"
-    ],
-    "all": false,
-    "loop": 2.86
-   },
-   {
-    "bar": 115,
-    "bars": 8,
-    "start": 208.324,
-    "end": 222.958,
+    "bar": 18.5,
+    "bars": 2.75,
+    "start": 34.795,
+    "end": 39.863,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
     "all": true,
-    "loop": 3.39
+    "all_auto": true,
+    "edited": true
    },
    {
-    "bar": 128,
+    "bar": 49,
     "bars": 8,
-    "start": 232.13,
-    "end": 246.787,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 3.4
-   },
-   {
-    "bar": 193,
-    "bars": 8,
-    "start": 347.58,
-    "end": 361.744,
+    "start": 90.616,
+    "end": 105.094,
     "playing": [
      "drums",
      "piano"
     ],
     "all": false,
-    "loop": 2.74
+    "all_auto": false,
+    "edited": true
    },
    {
-    "bar": 213,
-    "bars": 8,
-    "start": 382.682,
-    "end": 396.794,
+    "bar": 115.5,
+    "bars": 4,
+    "start": 209.252,
+    "end": 216.642,
     "playing": [
      "drums",
      "piano",
      "synth"
     ],
-    "all": false,
-    "loop": 3.13
-   },
-   {
-    "bar": 238,
-    "bars": 8,
-    "start": 427.137,
-    "end": 441.249,
-    "playing": [
-     "drums",
-     "piano",
-     "synth"
-    ],
-    "all": false,
-    "loop": 3.06
+    "all": true,
+    "all_auto": true,
+    "edited": true,
+    "star": true
    }
   ],
   "tempo": 136.0,
@@ -3305,6 +3782,97 @@
      "score": 1.201
     }
    ]
-  }
+  },
+  "parts_auto": [
+   {
+    "bar": 17,
+    "bars": 8,
+    "start": 31.956,
+    "end": 46.829,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 2.75
+   },
+   {
+    "bar": 44,
+    "bars": 8,
+    "start": 81.496,
+    "end": 96.073,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.86
+   },
+   {
+    "bar": 115,
+    "bars": 8,
+    "start": 208.324,
+    "end": 222.958,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": true,
+    "loop": 3.39
+   },
+   {
+    "bar": 128,
+    "bars": 8,
+    "start": 232.13,
+    "end": 246.787,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.4
+   },
+   {
+    "bar": 193,
+    "bars": 8,
+    "start": 347.58,
+    "end": 361.744,
+    "playing": [
+     "drums",
+     "piano"
+    ],
+    "all": false,
+    "loop": 2.74
+   },
+   {
+    "bar": 213,
+    "bars": 8,
+    "start": 382.682,
+    "end": 396.794,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.13
+   },
+   {
+    "bar": 238,
+    "bars": 8,
+    "start": 427.137,
+    "end": 441.249,
+    "playing": [
+     "drums",
+     "piano",
+     "synth"
+    ],
+    "all": false,
+    "loop": 3.06
+   }
+  ]
  }
 }
