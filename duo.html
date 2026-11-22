@@ -28,7 +28,7 @@
 // and drags (mouse and touch). Parts are numbered in song order; a row only
 // offers the parts where its instruments really play (manifest `playing`).
 const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', FADED = '#7f97c7', DIM = '#b9c6e2';
-let INK = PAPER; // the instruments' paper: faded while silent or muted
+let INK = PAPER, INK0 = PAPER; // the instruments' paper: faded while silent or muted
 // p5 wraps the name in quotes: close and reopen them to pass a fallback list
 const FONT = 'Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif, "x';
 const INSTS = ['piano', 'drums', 'synth', 'bass'];
@@ -353,6 +353,15 @@ function silence(s) {
   refit(before);
   layout();
 }
+// The one switch: tempo matched to the drums AND the synth keyed to the
+// piano, or both free
+function toggleAlign() {
+  const on = !(tempoOn && keyOn);
+  tempoOn = keyOn = on;
+  eng.tempoMatch = on;
+  if (running) startTable();
+  say(on ? 'Aligné : tempo de la batterie, synthé dans le ton du piano' : 'Libres : chacun son tempo et sa tonalité');
+}
 // The key switch: free, or the synth moved to the piano's key
 function toggleKey() {
   keyOn = !keyOn;
@@ -461,13 +470,17 @@ function rowSpec(id, colW) {
   return { id, stagger, h: stagger ? 96 : 52 };
 }
 function layout() {
+  if (isCompact()) return layoutCompact();
+  L.compact = false;
+  const back = document.getElementById('back');
+  if (back) back.style.display = '';
   const W = width, H = height;
   pad = Math.max(8, Math.min(W, H) * 0.022);
   const portrait = H > W && W < 700;
   const shortH = H < 520;
   const wideSpots = W >= 640 && W / H >= 1.05;
   L.portrait = portrait;
-  const top = portrait ? 42 : 66;
+  let top = portrait ? 42 : 66;
   const bottomBar = portrait ? 100 : 0;
   const g = Math.max(6, W * 0.012);
   // cards
@@ -495,8 +508,15 @@ function layout() {
   textSize(12); textStyle(BOLD);
   L.hintLines = textWidth(HINT1.toUpperCase()) > W - 24 ? 2 : 1;
   const hintH = L.hintLines === 2 ? 36 : 24;
-  const spotsH = Math.max(90, H - top - bottomBar - deckH - pad - stripH - hintH - 10);
-  const cols = wideSpots ? 4 : 2, rws = wideSpots ? 1 : 2;
+  let spotsH = Math.max(90, H - top - bottomBar - deckH - pad - stripH - hintH - 10);
+  // one row of instruments needs no more height than its width gives: the
+  // rest goes around the page (centred), not into a tall empty row
+  const rowMax = ((W - 2 * pad) / 4) * 0.9 + 60;
+  if (spotsH > rowMax) { top += (spotsH - rowMax) / 2; spotsH = rowMax; }
+  // the instruments: always one row of four; a volume slider beside each
+  // only when there is room for it
+  const cols = 4, rws = 1;
+  L.sliders = (W - 2 * pad) / 4 * 0.92 >= 200;
   const cw = (W - 2 * pad) / cols, chh = spotsH / rws;
   spots.forEach((s, i) => {
     const c = i % cols, r = Math.floor(i / cols);
@@ -517,9 +537,10 @@ function layout() {
     buttons.tempo = { x: pad, y: by - 44, w: sw.w, h: 44, pill: 'left' };
     buttons.key = { x: pad, y: by, w: sw.w, h: 44, pill: 'left' };
   } else {
-    buttons.tempo = { x: buttons.play.x - 300, y: by - 22, w: 250, h: 44, pill: 'right' };
+    // one switch: tempo and key aligned (or both free), right of the face
     const kx = buttons.dice.x + 100;
-    buttons.key = { x: kx, y: by - 22, w: Math.min(300, W - pad - kx), h: 44, pill: 'left' };
+    buttons.tempo = { x: kx, y: by - 22, w: Math.min(320, W - pad - kx), h: 44, pill: 'left' };
+    buttons.key = { x: -999, y: -999, w: 0, h: 0 };
   }
   const y0 = hintY + hintH / 2 + 2;
   cards.forEach((c, i) => {
@@ -527,6 +548,214 @@ function layout() {
     c.x = pad + (i % perRow) * (cardW + g);
     c.y = y0 + Math.floor(i / perRow) * (cardH + g);
   });
+}
+
+// ---------- compact mode (a small canvas: the tile on the wall, a phone) ----------
+// Four big instruments (tap: mute), ten round song tokens (tap: the whole
+// song on a random part, again: its next part; drag onto an instrument: that
+// instrument plays it), play/stop and the random face. No strip, no
+// switches (they stay on), no sliders, one short line of hint
+const SHORT_HINT = 'Touchez une chanson · glissez-la sur un instrument';
+const isCompact = () => width < 600 || height < 520;
+let compactIssues = []; // texts that would not fit (tests)
+
+function layoutCompact() {
+  const W = width, H = height;
+  L.compact = true;
+  chips.length = 0;
+  pad = 8;
+  const back = document.getElementById('back');
+  if (back) back.style.display = 'none';
+  // bottom bar: play/stop and the random face, >= 48 px
+  const bb = H < 420 ? 58 : 76;
+  const by = H - bb / 2;
+  buttons.play = { x: W / 2 - 42, y: by, r: 24 };
+  buttons.dice = { x: W / 2 + 34, y: by, r: 22 };
+  buttons.tempo = { x: -999, y: -999, w: 0, h: 0 };
+  buttons.key = { x: -999, y: -999, w: 0, h: 0 };
+  // tokens: one row of 10 when there is room, else two rows of 5
+  const perRow = (W - 2 * pad) / 10 >= 56 ? 10 : 5;
+  const rows = 10 / perRow;
+  const slot = (W - 2 * pad) / perRow;
+  let d = Math.max(44, Math.min(slot - 8, 64, (H * (rows === 1 ? 0.17 : 0.13))));
+  // titles under the tokens: only if every title fits whole at >= 11 px,
+  // and the instruments keep at least 40 % of the height
+  textStyle(BOLD);
+  let ts = Math.min(13, Math.max(11, d * 0.24));
+  textSize(ts);
+  while (ts > 11 && cards.some((c) => textWidth(c.title) > slot - 4)) { ts -= 0.5; textSize(ts); }
+  const titlesFit = cards.length && cards.every((c) => textWidth(c.title) <= slot - 4);
+  // the short hint: one line, or nothing
+  textSize(12);
+  const hintH = textWidth(SHORT_HINT.toUpperCase()) <= W - 2 * pad ? 20 : 0;
+  const tokensH = (titles) => rows * (d + (titles ? ts + 6 : 0)) + (rows - 1) * 6;
+  let titles = titlesFit && H - bb - tokensH(true) - hintH - 3 * pad >= H * 0.4;
+  L.tokTitles = titles; L.tokSize = ts; L.tokD = d;
+  const tokTop = H - bb - pad - tokensH(titles);
+  const cellH = d + (titles ? ts + 6 : 0);
+  cards.forEach((c, i) => {
+    c.w = slot; c.h = cellH;
+    c.x = pad + (i % perRow) * slot;
+    c.y = tokTop + Math.floor(i / perRow) * (cellH + 6);
+  });
+  hintY = tokTop - hintH / 2 - 2;
+  L.hintH = hintH;
+  // instruments: one row of four, as tall as their width allows, centred
+  // in what is left
+  const avail = tokTop - hintH - 4 - pad;
+  const cw = (W - 2 * pad) / 4;
+  const ch = Math.min(avail, cw * 1.25 + 24);
+  // the whole composition centred: what the instruments don't use goes
+  // half above them, half under the buttons
+  const dy = (avail - ch) / 2;
+  const instTop = pad + dy;
+  spots.forEach((s, i) => {
+    s.w = cw - 6; s.h = ch - 6;
+    s.cx = pad + cw * (i + 0.5);
+    s.cy = instTop + ch / 2;
+  });
+  cards.forEach((c) => { c.y -= dy; });
+  hintY -= dy;
+  buttons.play.y -= dy; buttons.dice.y -= dy;
+}
+
+function drawCompact() {
+  background(BLUE);
+  noStroke();
+  chips.length = 0;
+  compactIssues = [];
+  spots.forEach(drawSpotCompact);
+  drawButtons();
+  if (L.hintH) {
+    fill(PAPER); textAlign(CENTER, CENTER); textStyle(BOLD); textSize(12);
+    const h = millis() < hintUntil && textWidth(tempHint.toUpperCase()) <= width - 2 * pad ? tempHint : SHORT_HINT;
+    text(h.toUpperCase(), width / 2, hintY);
+  }
+  if (!eng) {
+    fill(PAPER); textSize(14); textAlign(CENTER, CENTER);
+    text(loadError ? 'ERREUR : ' + loadError : 'CHARGEMENT…', width / 2, height * 0.75);
+    return;
+  }
+  const single = singleSong();
+  for (const c of cards) {
+    if (drag && drag.card === c && !drag.from && drag.moved) {
+      fill(255, 255, 255, 40); ellipse(c.x + c.w / 2, c.y + L.tokD / 2, L.tokD);
+      continue;
+    }
+    if (anims.some((a) => a.card === c)) continue;
+    c.shake *= 0.9;
+    drawToken(c, c.x + c.w / 2 + Math.sin(frameCount * 0.6) * c.shake * 3, c.y + L.tokD / 2, L.tokD, false, c.id === single);
+  }
+  for (let i = anims.length - 1; i >= 0; i--) {
+    const a = anims[i];
+    a.t = Math.min(1, a.t + 0.12);
+    const e = 1 - Math.pow(1 - a.t, 3);
+    const c = a.card;
+    drawToken(c, lerp(a.x + c.w / 2, c.x + c.w / 2, e), lerp(a.y + L.tokD / 2, c.y + L.tokD / 2, e), L.tokD, false, false);
+    if (a.t >= 1) anims.splice(i, 1);
+  }
+  if (drag && drag.moved && drag.card) {
+    drawToken(drag.card, drag.x, drag.y - L.tokD * 0.2, L.tokD * 1.1, true, false);
+  }
+}
+
+// The song holding the whole table (every occupied instrument), if any
+function singleSong() {
+  const on = occupied();
+  return on.length && on.every((s) => s.track === on[0].track) ? on[0].track : null;
+}
+
+function drawToken(c, x, y, d, lifted, current) {
+  push();
+  translate(x, y);
+  if (lifted) { fill(0, 0, 0, 50); ellipse(4, 6, d, d); }
+  const on = spots.some((s) => s.track === c.id);
+  if (current) { fill(ORANGE); roughEllipse(0, 0, d / 2 + 4, d / 2 + 4, 400 + c.i, 1); }
+  fill(PAPER);
+  roughEllipse(0, 0, d / 2, d / 2, 420 + c.i * 3, Math.max(0.8, d * 0.02));
+  motif(c.i, 0, 0, d * 0.3, 700 + c.i * 17);
+  if (on && !current) { fill(ORANGE); star(d * 0.36, -d * 0.36, d * 0.13, 40 + c.i); }
+  pop();
+  if (L.tokTitles && !lifted) {
+    fill(PAPER); textAlign(CENTER, TOP); textStyle(BOLD); textSize(L.tokSize);
+    if (textWidth(c.title) > c.w - 4) compactIssues.push('token ' + c.title);
+    text(c.title, x, y + d / 2 + 4);
+  }
+}
+
+function drawSpotCompact(s) {
+  const lh = 18; // the song's line under the drawing
+  const area = s.h - lh - 4;
+  const r = Math.min(s.w * 0.42, area * 0.42);
+  const on = !!(s.track && running);
+  const lv = on && s.voice && s.voice.ready ? s.voice.level() : 0;
+  s.pulse = lerp(s.pulse, lv, 0.35);
+  s.shake *= 0.88;
+  const top = s.cy - s.h / 2;
+  const cy = top + area - 0.86 * r - 2; // the cat's head above
+  const hovered = drag && drag.moved && drag.card && spotAt(drag.x, drag.y) === s;
+  if (hovered) {
+    fill(accepts(s, drag.card.id) ? ORANGE : 'rgba(253,253,253,0.25)');
+    roughRect(s.cx - s.w / 2, top, s.w, s.h, 300 + s.i * 7, 2);
+    fill(BLUE);
+    roughRect(s.cx - s.w / 2 + 4, top + 4, s.w - 8, s.h - 8, 310 + s.i * 7, 2);
+  }
+  if (s.track && s.muted) {
+    noFill(); stroke(FADED); strokeWeight(2);
+    drawingContext.setLineDash([6, 6]);
+    rect(s.cx - s.w / 2 + 2, top + 2, s.w - 4, s.h - 4, 4);
+    drawingContext.setLineDash([]);
+    noStroke();
+  }
+  const quiet = s.track && !plays(s.track, s.part, s.inst);
+  push();
+  translate(s.cx + Math.sin(frameCount * 0.7) * s.shake * 3, cy);
+  scale(1 + s.pulse * 0.08);
+  INK = !s.track || s.muted ? FADED : quiet ? DIM : PAPER;
+  INK0 = INK; drawCat(s, r, 'back'); INK = INK0;
+  drawInstrument(s.inst, r, 100 + s.i * 31);
+  INK = PAPER;
+  instrumentStars(s, r, on && !s.muted, lv);
+  drawCat(s, r, 'front');
+  pop();
+  // the song it plays: motif, title, part; else the instrument's name
+  const y = top + s.h - lh / 2 - 1;
+  textStyle(BOLD); textAlign(LEFT, CENTER);
+  let ts = 13; textSize(ts);
+  const draggingFromHere = drag && drag.moved && drag.from === s;
+  if (s.track && !draggingFromHere) {
+    const c = cardById(s.track);
+    const label = `${c.title} · ${s.part + 1}`;
+    const badge = 16;
+    while (ts > 11 && textWidth(label) + badge + 4 > s.w) { ts -= 0.5; textSize(ts); }
+    const withBadge = textWidth(label) + badge + 4 <= s.w;
+    const tw = textWidth(label) + (withBadge ? badge + 4 : 0);
+    if (tw > s.w) compactIssues.push('spot ' + label);
+    let x = s.cx - tw / 2;
+    if (withBadge) {
+      fill(s.muted ? FADED : PAPER); roughEllipse(x + badge / 2, y, badge / 2, badge / 2, 600 + c.i, 0.6);
+      motif(c.i, x + badge / 2, y, badge * 0.32, 700 + c.i * 17);
+      x += badge + 4;
+    }
+    fill(s.muted ? FADED : PAPER);
+    text(label, x, y);
+  } else {
+    fill(FADED); textAlign(CENTER, CENTER);
+    text(NAMES[s.inst], s.cx, y);
+  }
+}
+
+// A tap on a token: the whole song on a random part; the song already on
+// the table: its next part (right away)
+function tapToken(id) {
+  if (singleSong() === id) {
+    const ks = offered(id);
+    const cur = spots.find((s) => s.track === id).part;
+    const k = ks[(ks.indexOf(cur) + 1) % ks.length] ?? 0;
+    say(`${eng.byId[id].title} : partie ${k + 1}`);
+    return choosePart(id, k);
+  }
+  wholeTrack(id);
 }
 
 // ---------- p5 ----------
@@ -554,12 +783,13 @@ function setup() {
     layout();
   }).catch((err) => { loadError = String(err); console.error(err); });
   window.spots = spots;
-  window.table = { get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
+  window.table = { toggleAlign, get sliders() { return !!L.sliders; }, get compact() { return !!L.compact; }, get issues() { return compactIssues; }, singleSong, tapToken, get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
   layout();
 }
 function windowResized() { resizeCanvas(windowWidth, windowHeight); layout(); }
 
 function draw() {
+  if (L.compact) return drawCompact();
   background(BLUE);
   noStroke();
   spots.forEach(drawSpot);
@@ -668,10 +898,14 @@ function drawButtons() {
 }
 
 function drawTempoSwitch() {
+  if (L.compact) return; // the switch stays on, unseen
+  drawSwitch(buttons.tempo, tempoOn && keyOn, 950, 'TEMPO ET TONALITÉ :', 'ALIGNÉS', 'ALIGNÉS', 'LIBRES');
+}
+function drawTwoSwitches() {
   drawSwitch(buttons.tempo, tempoOn, 950, 'TEMPO :', 'CALÉ SUR LA BATTERIE', 'CALÉ BATTERIE');
   drawSwitch(buttons.key, keyOn, 970, 'TONALITÉ :', 'SYNTHÉ ACCORDÉ AU PIANO', 'SYNTHÉ → PIANO');
 }
-function drawSwitch(t, on, seed, l1, onLong, onShort) {
+function drawSwitch(t, on, seed, l1, onLong, onShort, offLabel = 'LIBRE') {
   const pw = 44, ph = 24;
   const px = t.pill === 'left' ? t.x : t.x + t.w - pw;
   const py = t.y + (t.h - ph) / 2;
@@ -680,7 +914,7 @@ function drawSwitch(t, on, seed, l1, onLong, onShort) {
   fill(PAPER);
   roughEllipse(on ? px + pw - 12 : px + 12, py + ph / 2, 9, 9, seed + 10, 0.6);
   fill(PAPER); textStyle(BOLD); textSize(12);
-  const l2 = on ? onLong : 'LIBRE';
+  const l2 = on ? onLong : offLabel;
   if (t.pill === 'left') {
     textAlign(LEFT, CENTER);
     const x = px + pw + 8, room = t.x + t.w - x;
@@ -713,11 +947,178 @@ function tempoNote(s) {
 // The cover's orange star, a few around each instrument (unit r: x, y,
 // size). Playing: they beat with the clock and swell with the sound; empty
 // or muted: faint
+// ---------- the cats (one per instrument, playing it) ----------
+// Hand-cut cats after the band's covers (not copies): the pianist is black
+// with a white face mask, the drummer tall and pale blue, the synth player
+// paper-white, the bassist mid-blue. Body and tail behind the instrument,
+// head, arms, paws and the stick in front. Units: the instrument's r
+const CAT_DARK = '#0d1733';
+const CATS = {
+  piano: { fur: CAT_DARK, cut: PAPER, line: PAPER, mask: true, head: [0.02, -0.96], body: [0, -0.4, 0.5, 0.6], hr: 0.28 },
+  drums: { fur: '#a9c1ee', cut: BLUE, line: null, head: [0.04, -1.05], body: [0, -0.5, 0.4, 0.66], hr: 0.27, tall: 1.12 },
+  synth: { fur: PAPER, cut: BLUE, line: null, head: [-0.14, -0.8], body: [-0.14, -0.3, 0.44, 0.5], hr: 0.27 },
+  bass: { fur: '#5b7ecb', cut: PAPER, line: PAPER, head: [-0.42, -0.86], body: [-0.34, -0.22, 0.42, 0.62], hr: 0.27 },
+};
+// What the cat does now: 'sleep' (no song), 'muted' (paws on its ears),
+// 'play', or 'idle' (a song, the table stopped)
+function catMode(s) {
+  if (!s.track) return 'sleep';
+  if (s.muted) return 'muted';
+  return running && s.voice ? 'play' : 'idle';
+}
+function catPen(c, r) {
+  if (c.line) { stroke(c.line); strokeWeight(Math.max(0.8, r * 0.018)); } else noStroke();
+  fill(c.fur);
+}
+function limb(c, r, x1, y1, x2, y2) { // an arm: a thick stroke and a paw
+  // always outlined (cobalt on the light cats): an arm reads over its own fur
+  const w = Math.max(2.2, r * 0.1), edge = c.line || BLUE;
+  stroke(edge); strokeWeight(w + Math.max(1.6, r * 0.036)); line(x1 * r, y1 * r, x2 * r, y2 * r);
+  stroke(c.fur); strokeWeight(w); line(x1 * r, y1 * r, x2 * r, y2 * r);
+  stroke(edge); strokeWeight(Math.max(0.8, r * 0.018));
+  fill(c.fur);
+  ellipse(x2 * r, y2 * r, w * 1.5, w * 1.25);
+  noStroke();
+}
+function drawCat(s, r, layer) {
+  const c = CATS[s.inst];
+  const mode = catMode(s);
+  const lv = mode === 'play' ? Math.min(1, s.pulse * 1.6) : 0;
+  const ph = mode === 'play' && eng ? eng.phase() : null;
+  const beat = ph ? ph.beat : 0, one = ph && ph.n === 0;
+  const t = frameCount;
+  const sway = s.inst === 'bass' && mode === 'play' ? Math.sin(t * 0.09) * 0.05 : 0;
+  push();
+  translate(sway * r, 0);
+  if (layer === 'back') {
+    // the tail: a slow swish asleep, livelier when playing
+    const speed = mode === 'play' ? 0.12 : 0.03;
+    const sw = Math.sin(t * speed + s.i) * (mode === 'play' ? 0.25 : 0.15);
+    const [bx, by, brx, bry] = c.body;
+    noFill();
+    const tw = Math.max(2.5, r * 0.09);
+    const tail = () => bezier((bx + brx * 0.8) * r, (by + bry * 0.6) * r, (bx + brx * 1.6) * r, (by + bry * 0.3) * r,
+      (bx + brx * (1.5 + sw)) * r, (by - bry * 0.6) * r, (bx + brx * (1.2 + sw * 1.5)) * r, (by - bry * 1.0) * r);
+    if (c.line) { stroke(c.line); strokeWeight(tw + Math.max(1.6, r * 0.036)); tail(); }
+    stroke(c.fur); strokeWeight(tw); tail();
+    noStroke();
+    catPen(c, r);
+    roughEllipse(bx * r, by * r * (c.tall || 1), brx * r, bry * r * (c.tall || 1), 1100 + s.i * 9, Math.max(0.6, r * 0.02));
+    noStroke();
+    pop();
+    return;
+  }
+  // front: arms and paws (what each cat does), then the head
+  const [hx0, hy0] = c.head;
+  let hx = hx0, hy = hy0 * (c.tall || 1), tilt = 0;
+  if (mode === 'play') {
+    if (s.inst === 'piano') { // paws tap the keys, one then the other
+      const a = t * 0.38;
+      const lift = (k) => (0.5 + 0.5 * Math.sin(a + k)) * (0.04 + lv * 0.14);
+      limb(c, r, -0.26, -0.6, -0.36, 0.06 - lift(0));
+      limb(c, r, 0.26, -0.6, 0.38, 0.06 - lift(Math.PI));
+    } else if (s.inst === 'drums') { // the stick on the beat (harder on 1)
+      const hit = Math.pow(1 - beat, 5) * (one ? 1 : 0.7);
+      const px = lerp(0.5, 0.58, hit), py = lerp(-0.62, -0.02, hit);
+      limb(c, r, 0.18, -0.72, px, py);
+      stroke(PAPER); strokeWeight(Math.max(1.5, r * 0.035));
+      line(px * r, py * r, (px + 0.22) * r, (py + lerp(-0.2, 0.18, hit)) * r);
+      noStroke();
+      const hit2 = Math.pow(1 - ((beat + 0.5) % 1), 5) * 0.6;
+      limb(c, r, -0.18, -0.72, -0.44, lerp(-0.58, -0.32, hit2));
+    } else if (s.inst === 'synth') { // nods, a paw on a knob, one on the keys
+      hy += Math.pow(1 - beat, 3) * 0.07;
+      tilt = Math.sin(t * 0.05) * 0.06;
+      limb(c, r, -0.34, -0.48, -0.6 + Math.sin(t * 0.04) * 0.02, -0.12);
+      limb(c, r, 0.08, -0.5, 0.32, 0.12 - (0.5 + 0.5 * Math.sin(t * 0.3)) * lv * 0.1);
+    } else if (s.inst === 'bass') { // plucks near the body, the other paw on the neck
+      const pl = Math.sin(t * 0.55) * (0.02 + lv * 0.06);
+      limb(c, r, -0.46, -0.5, -0.24 + pl, 0.18);
+      limb(c, r, -0.26, -0.56, 0.3, -0.26);
+      tilt = sway * 1.5;
+    }
+  } else if (mode === 'idle') { // ready: paws resting on the instrument
+    const rest = { piano: [[-0.26, -0.6, -0.3, -0.55], [0.26, -0.6, 0.3, -0.55]], drums: [[0.18, -0.72, 0.42, -0.62]],
+      synth: [[-0.34, -0.48, -0.5, -0.32]], bass: [[-0.46, -0.5, -0.3, 0.1]] }[s.inst];
+    rest.forEach(([a, b, x, y]) => limb(c, r, a, b, x, y));
+  } else if (mode === 'sleep') {
+    tilt = 0.32;
+    hy += 0.05;
+  }
+  drawCatHead(s, c, r, hx, hy, tilt, mode, lv);
+  if (mode === 'muted') { // paws over its ears
+    const hr = c.hr * r;
+    limb(c, r, hx - 0.25, hy + 0.32, hx - (hr * 0.72) / r, hy - (hr * 0.75) / r);
+    limb(c, r, hx + 0.25, hy + 0.32, hx + (hr * 0.72) / r, hy - (hr * 0.75) / r);
+  }
+  pop();
+}
+function drawCatHead(s, c, r, hx, hy, tilt, mode, lv) {
+  const hr = c.hr * r;
+  const dark = c.fur === CAT_DARK || c.fur === '#5b7ecb';
+  const t = frameCount;
+  push();
+  translate(hx * r, hy * r);
+  rotate(tilt);
+  // ears (twitching with the music)
+  const tw = mode === 'play' ? lv * 0.12 * Math.sin(t * 0.4 + s.i) : 0;
+  catPen(c, r);
+  [-1, 1].forEach((k) => {
+    roughShape([[k * hr * 0.2, -hr * 0.6], [k * hr * (0.85 + tw), -hr * (1.45 + tw)], [k * hr * 0.92, -hr * 0.2]], 1200 + s.i * 5 + k, Math.max(0.4, hr * 0.03));
+  });
+  roughEllipse(0, 0, hr, hr * 0.86, 1210 + s.i * 7, Math.max(0.5, hr * 0.03));
+  noStroke();
+  fill(c.cut);
+  [-1, 1].forEach((k) => triangle(k * hr * 0.36, -hr * 0.62, k * hr * 0.76, -hr * 1.18, k * hr * 0.8, -hr * 0.42));
+  if (c.mask) { fill(PAPER); roughEllipse(0, hr * 0.32, hr * 0.66, hr * 0.5, 1220, Math.max(0.4, hr * 0.03)); }
+  // eyes: closed asleep, squeezed when muted, wide on loud bits; a blink now and then
+  const blink = (t + s.i * 53) % 230 < 6;
+  const open = mode === 'sleep' || blink ? 0 : mode === 'muted' ? 0.12 : Math.min(1.25, 0.6 + lv * 0.9);
+  const eyeC = dark ? PAPER : BLUE, pupil = dark ? CAT_DARK : PAPER;
+  [-1, 1].forEach((k) => {
+    const ex = k * hr * 0.38, ey = -hr * 0.08;
+    if (open < 0.15) {
+      noFill(); stroke(c.mask && false ? CAT_DARK : eyeC); strokeWeight(Math.max(1, hr * 0.08));
+      if (mode === 'muted') { line(ex - hr * 0.14, ey - hr * 0.08, ex + hr * 0.14, ey); line(ex - hr * 0.14, ey + hr * 0.08, ex + hr * 0.14, ey); }
+      else arc(ex, ey, hr * 0.34, hr * 0.22, 0, PI);
+      noStroke();
+    } else {
+      fill(eyeC);
+      ellipse(ex, ey, hr * 0.36, hr * 0.3 * open);
+      fill(pupil);
+      ellipse(ex + k * hr * 0.03, ey, hr * 0.09, hr * 0.26 * open);
+    }
+  });
+  // the nose: the one orange cut
+  fill(ORANGE);
+  triangle(-hr * 0.09, hr * 0.2, hr * 0.09, hr * 0.2, 0, hr * 0.32);
+  // singing now and then, on loud bits (like the first album's cat)
+  const sing = mode === 'play' && lv > 0.3 && Math.sin(t * 0.045 + s.i * 2) > 0.75;
+  if (sing) { fill(c.mask ? CAT_DARK : dark ? PAPER : BLUE); ellipse(0, hr * 0.5, hr * 0.24, hr * 0.28); }
+  // whiskers
+  if (hr >= 7) {
+    stroke(dark ? PAPER : BLUE); strokeWeight(Math.max(0.6, hr * 0.04));
+    const wt = mode === 'play' ? Math.sin(t * 0.3 + s.i) * lv * hr * 0.1 : 0;
+    [-1, 1].forEach((k) => [-1, 0, 1].forEach((j) =>
+      line(k * hr * 0.3, hr * 0.32, k * hr * 1.15, hr * (0.22 + j * 0.16) + wt * j)));
+    noStroke();
+  }
+  pop();
+  // asleep: a little z rising
+  if (mode === 'sleep') {
+    const zt = (frameCount * 0.01 + s.i * 0.3) % 1;
+    fill(PAPER); drawingContext.globalAlpha = 0.7 * (1 - zt);
+    textAlign(CENTER, CENTER); textStyle(BOLD); textSize(Math.max(9, hr * 0.8));
+    text('z', (hx * r) + hr * (1 + zt * 0.5), hy * r - hr * (1.1 + zt * 1.2));
+    drawingContext.globalAlpha = 1;
+  }
+}
+
 const STAR_SPOTS = {
-  piano: [[-1.02, -0.72, 0.15], [0.98, -0.9, 0.1], [0.62, -1.08, 0.065]],
-  drums: [[-1.0, -0.98, 0.1], [1.04, -0.62, 0.14], [-0.2, -1.12, 0.07]],
-  synth: [[-0.98, -0.62, 0.12], [0.94, -0.82, 0.09], [0.1, -0.88, 0.06]],
-  bass: [[-0.92, -0.86, 0.14], [-0.52, 0.66, 0.08], [0.98, 0.5, 0.1]],
+  piano: [[-1.02, -0.72, 0.15], [0.98, -0.9, 0.1], [0.66, -1.22, 0.065]],
+  drums: [[-1.0, -0.98, 0.1], [1.04, -0.62, 0.14], [-0.62, -1.32, 0.07]],
+  synth: [[-0.98, -0.62, 0.12], [0.94, -0.82, 0.09], [0.55, -1.0, 0.06]],
+  bass: [[-1.02, -0.5, 0.12], [-0.52, 0.66, 0.08], [0.98, 0.5, 0.1]],
 };
 function instrumentStars(s, r, on, lv) {
   const ph = on && eng && eng.phase ? eng.phase() : null;
@@ -762,6 +1163,7 @@ function drawSlider(s, area) {
   drawingContext.globalAlpha = 1;
 }
 function sliderAt(x, y) {
+  if (L.compact || !L.sliders) return null;
   return spots.find((s) => {
     if (!s.area) return false;
     const g = sliderOf(s);
@@ -781,7 +1183,8 @@ function drawSpot(s) {
   const tagH = Math.max(12, Math.min(17, s.w * 0.07)) * 1.9;
   const area = s.h - tagH - 14; // above the tag (and its tempo note)
   // the instrument (and its stars) left of the volume slider
-  const r = Math.min((s.w / 2 - 26) / 1.1, area * 0.62 * 0.8);
+  const sx = L.sliders ? 14 : 0; // room for the slider on the right
+  const r = Math.min((s.w / 2 - (L.sliders ? 26 : 6)) / 1.1, area * 0.42);
   const on = !!(s.track && running);
   const lv = on && s.voice && s.voice.ready ? s.voice.level() : 0;
   s.pulse = lerp(s.pulse, lv, 0.35);
@@ -789,7 +1192,7 @@ function drawSpot(s) {
   const hovered = drag && drag.moved && spotAt(drag.x, drag.y) === s;
   const ok = hovered && accepts(s, drag.card.id);
   const quiet = s.track && !plays(s.track, s.part, s.inst);
-  const cy = s.cy - s.h / 2 + area / 2 + 2;
+  const cy = s.cy - s.h / 2 + area - 0.86 * r - 4; // the cat's head above
 
   if (hovered) {
     fill(ok ? ORANGE : 'rgba(253,253,253,0.25)');
@@ -805,14 +1208,17 @@ function drawSpot(s) {
     noStroke();
   }
   push();
-  translate(s.cx - 14 + Math.sin(frameCount * 0.7) * s.shake * 4, cy);
+  translate(s.cx - sx + Math.sin(frameCount * 0.7) * s.shake * 4, cy);
   scale(1 + s.pulse * 0.08);
   INK = !s.track || s.muted ? FADED : quiet ? DIM : PAPER;
+  INK0 = INK; drawCat(s, r, 'back'); INK = INK0;
   drawInstrument(s.inst, r, 100 + s.i * 31);
   INK = PAPER;
   instrumentStars(s, r, on && !s.muted, lv);
+  drawCat(s, r, 'front');
   pop();
-  drawSlider(s, area);
+  if (L.sliders) drawSlider(s, area);
+  else s.area = 0;
 
   let ts = Math.max(12, Math.min(17, s.w * 0.07));
   textAlign(CENTER, CENTER); textStyle(BOLD); textSize(ts);
@@ -838,7 +1244,7 @@ function drawSpot(s) {
         const keys = `${eng.byId[s.track].key} → ${eng.byId[spots[0].track].key}`.toUpperCase();
         if (textWidth(note + ' · ' + keys) < s.w - 36) note += ' · ' + keys;
       }
-      text(note, s.cx - 14, y - 9);
+      text(note, s.cx - (L.sliders ? 14 : 0), y - 9);
     }
   } else {
     fill(PAPER);
@@ -1034,7 +1440,7 @@ function up(e) {
   if (d.kind === 'slider') return;
   if (d.kind === 'play') return mainButton();
   if (d.kind === 'dice') { hatPop = millis(); return randomTable(); }
-  if (d.kind === 'tempo') return toggleTempo();
+  if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
   if (d.kind === 'chip') {
     const { id, k } = d.chip;
@@ -1044,6 +1450,7 @@ function up(e) {
   const { x, y } = pos(e);
   if (!d.moved) {
     if (d.from) return toggle(d.from);
+    if (L.compact) return tapToken(d.card.id);
     const now = millis();
     if (lastTap.id === d.card.id && now - lastTap.t < 380) { lastTap = { id: null, t: 0 }; return wholeTrack(d.card.id); }
     lastTap = { id: d.card.id, t: now };
