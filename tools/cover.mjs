@@ -40,10 +40,6 @@ await page.addScriptTag({ content: `window.poster = function (S) {
   while (textWidth('PINKASOL !') > S - 140 * u) { ts -= 2 * u; textSize(ts); }
   text('PINKASOL !', 66 * u, 225 * u + ts * 0.95);
   fill(ORANGE); star(700 * u, 150 * u, 64 * u, 11);
-  fill(PAPER); textSize(40 * u);
-  drawingContext.letterSpacing = \`\${8 * u}px\`;
-  text('PICASOL · LA TABLE DU DUO', 72 * u, 225 * u + ts * 0.95 + 72 * u);
-  drawingContext.letterSpacing = '0px';
 
   // The instruments, on a hand-cut table
   fill(PAPER);
