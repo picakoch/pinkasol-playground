@@ -803,12 +803,10 @@ function drawToken(c, x, y, d, lifted, current) {
   push();
   translate(x, y);
   if (lifted) { fill(0, 0, 0, 50); ellipse(4, 6, d, d); }
-  const on = spots.some((s) => s.track === c.id);
   if (current) { fill(ORANGE); roughEllipse(0, 0, d / 2 + 4, d / 2 + 4, 400 + c.i, 1); }
   fill(PAPER);
   roughEllipse(0, 0, d / 2, d / 2, 420 + c.i * 3, Math.max(0.8, d * 0.02));
   motif(c.i, 0, 0, d * 0.3, 700 + c.i * 17);
-  if (on && !current) { fill(ORANGE); star(d * 0.36, -d * 0.36, d * 0.13, 40 + c.i); }
   pop();
   if (L.tokTitles && !lifted) {
     fill(PAPER); textAlign(CENTER, TOP); textStyle(BOLD); textSize(L.tokSize);
@@ -1630,8 +1628,7 @@ function drawRow(row, X0, X1, top, h) {
       fill(isCur ? ORANGE : here ? PAPER : DIM);
       roughRect(xs[i] - cw / 2, cy - 13, cw, 26, 800 + k * 5 + c.i + s.i * 50, 1);
       fill(BLUE); textAlign(CENTER, CENTER); textSize(14);
-      text(String(k + 1), xs[i] + (p.all ? 5 : 0), cy - 1);
-      if (p.all) { fill(isCur ? BLUE : ORANGE); star(xs[i] - cw / 2 + 9, cy - 1, 5.5, 60 + k); }
+      text(String(k + 1), xs[i], cy - 1);
       // the touch target: 44 × 44 around the chip, away from the line
       chips.push({ s, id, k, x: xs[i] - MIN_TOUCH / 2, y: up ? cy + 13 - MIN_TOUCH : cy - 13, w: MIN_TOUCH, h: MIN_TOUCH });
       if (isCur && voice && running) {
@@ -1708,11 +1705,6 @@ function drawCard(c, x, y, w, h, rot, lifted) {
   while (textWidth(c.title) > w * 0.92 && ts > 12) { ts -= 0.5; textSize(ts); }
   if (textWidth(c.title) > w * 0.96) { ts = 11; textSize(ts); }
   text(c.title, 0, h * 0.33);
-  const on = spots.filter((s) => s.track === c.id);
-  if (on.length) {
-    fill(ORANGE);
-    star(w / 2 - w * 0.13, -h / 2 + Math.min(w, h) * 0.14, Math.min(w, h) * 0.09, 40 + c.i);
-  }
   pop();
 }
 
