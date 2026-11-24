@@ -43,10 +43,11 @@
 <script>
 // La table du duo — the tracks are cards. Drop one on an instrument: that
 // instrument plays its stem of a PART of the track (a passage cut on bars,
-// the same bars for every stem). Instruments holding the same track always
-// play the same part, started together on the same sample: one track on the
-// table = the passage as recorded. The strip under the instruments shows each
-// track's parts where they are in the song; click one to go there (next bar).
+// the same bars for every stem). Each instrument has its own part, even on
+// the same song (owner, 2026-11-24); all start together on the same sample.
+// Double-click a song: all of it on the table (a random part); again: its
+// next part. The strip under the instruments: one row per instrument, its
+// song's parts where they are in the song; click one: that instrument only.
 // Click an instrument: mute / unmute it. The big button: stop / play the
 // table as it is (or the space bar). The die: a random table. Only clicks
 // and drags (mouse and touch). Parts are numbered in song order. The strip:
@@ -413,6 +414,13 @@ function toggleTempo() {
 }
 // A part chip: right away, the whole table restarts (this track on its new
 // part, the others on theirs), all aligned
+// A part for one instrument only (a strip row, its ‹ ›): the table restarts
+// aligned
+function spotPart(s, k) {
+  s.part = k;
+  startTable();
+  layout();
+}
 function choosePart(id, k) {
   setPart(id, k);
   startTable();
@@ -425,12 +433,17 @@ function toggle(s) {
   say(s.muted ? `${NAMES[s.inst]} coupé — touchez-le pour le remettre` : `${NAMES[s.inst]} remis`);
 }
 // Double-click: the whole track on the table, on a RANDOM part (owner,
-// 2026-11-22), another one than the part it's on, when it has several
+// 2026-11-22), another one than the part it's on, when it has several. The
+// same song double-clicked again (still the whole table): its next part, in
+// turn (owner, 2026-11-24)
+let lastWhole = null; // { id, k }: the last double-clicked song and its part
 function wholeTrack(id) {
   const n = eng.byId[id].parts.length;
   const now = spots.find((s) => s.track === id)?.part;
   let k = Math.floor(Math.random() * n);
   if (n > 1 && k === now) k = (k + 1 + Math.floor(Math.random() * (n - 1))) % n;
+  if (lastWhole && lastWhole.id === id && singleSong() === id) k = (lastWhole.k + 1) % n;
+  lastWhole = { id, k };
   const extra = [];
   spots.forEach((s) => {
     if (accepts(s, id)) {
@@ -874,18 +887,9 @@ function drawSpotCompact(s) {
   }
 }
 
-// A tap on a token: the whole song on a random part; the song already on
-// the table: its next part (right away)
-function tapToken(id) {
-  if (singleSong() === id) {
-    const ks = offered(id);
-    const cur = spots.find((s) => s.track === id).part;
-    const k = ks[(ks.indexOf(cur) + 1) % ks.length] ?? 0;
-    say(`${eng.byId[id].title} : partie ${k + 1}`);
-    return choosePart(id, k);
-  }
-  wholeTrack(id);
-}
+// A tap on a token: as a double-click on a card (the whole song; again:
+// its next part)
+const tapToken = (id) => wholeTrack(id);
 
 // ---------- presets: a table as a short code ----------
 // "1~d07.2-p01.3-s08.4m-b0-a1": version 1; per instrument (d drums, p piano,
@@ -923,9 +927,6 @@ function decodePreset(code) {
     if (!tr || !(k >= 0 && k < (tr.parts || []).length) || !accepts(spotOf(inst), tr.id)) continue;
     out.spots[inst] = { track: tr.id, part: k, muted: t[4] === 'm' };
   }
-  // instruments holding one song play one part: the first one's
-  const first = {};
-  Object.values(out.spots).forEach((v) => { if (v) { if (!(v.track in first)) first[v.track] = v.part; v.part = first[v.track]; } });
   return Object.keys(out.spots).length || out.align !== null ? out : null;
 }
 // The table as the code says, silent until a gesture (browsers need one)
@@ -1028,8 +1029,8 @@ function stepPart(s, dir) {
   if (ks.length < 2) return; // a single part: nothing to change to
   const i = ks.indexOf(s.part);
   const k = ks[i < 0 ? 0 : (i + dir + ks.length) % ks.length];
-  say(`${eng.byId[id].title} : partie ${k + 1}`);
-  choosePart(id, k);
+  say(`${NAMES[s.inst]} : ${eng.byId[id].title}, partie ${k + 1}`);
+  spotPart(s, k);
 }
 
 // ---------- p5 ----------
@@ -1631,7 +1632,7 @@ function drawRow(row, X0, X1, top, h) {
       text(String(k + 1), xs[i] + (p.all ? 5 : 0), cy - 1);
       if (p.all) { fill(isCur ? BLUE : ORANGE); star(xs[i] - cw / 2 + 9, cy - 1, 5.5, 60 + k); }
       // the touch target: 44 × 44 around the chip, away from the line
-      chips.push({ id, k, x: xs[i] - MIN_TOUCH / 2, y: up ? cy + 13 - MIN_TOUCH : cy - 13, w: MIN_TOUCH, h: MIN_TOUCH });
+      chips.push({ s, id, k, x: xs[i] - MIN_TOUCH / 2, y: up ? cy + 13 - MIN_TOUCH : cy - 13, w: MIN_TOUCH, h: MIN_TOUCH });
       if (isCur && voice && running) {
         const pos = voice.position();
         if (pos != null) {
@@ -1810,9 +1811,9 @@ function up(e) {
   if (d.kind === 'key') return toggleKey();
   if (d.kind === 'mute') return toggle(d.s);
   if (d.kind === 'chip') {
-    const { id, k } = d.chip;
-    say(`${eng.byId[id].title} : partie ${k + 1}`);
-    return choosePart(id, k);
+    const { s, k } = d.chip;
+    say(`${NAMES[s.inst]} : ${eng.byId[s.track].title}, partie ${k + 1}`);
+    return spotPart(s, k);
   }
   const { x, y } = pos(e);
   if (!d.moved) {
