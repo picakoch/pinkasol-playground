@@ -49,8 +49,9 @@
 // track's parts where they are in the song; click one to go there (next bar).
 // Click an instrument: mute / unmute it. The big button: stop / play the
 // table as it is (or the space bar). The die: a random table. Only clicks
-// and drags (mouse and touch). Parts are numbered in song order; a row only
-// offers the parts where its instruments really play (manifest `playing`).
+// and drags (mouse and touch). Parts are numbered in song order; a row
+// offers all its song's parts, whatever instruments hold it (owner,
+// 2026-11-24). A row: the instruments' icons, mute and remove buttons.
 const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', FADED = '#7f97c7', DIM = '#b9c6e2';
 let INK = PAPER, INK0 = PAPER; // the instruments' paper: faded while silent or muted
 // p5 wraps the name in quotes: close and reopen them to pass a fallback list
@@ -84,7 +85,9 @@ let lastSliderTap = { s: null, t: 0 };
 let hintY = 0, stripY = 0, rowH = 40, pad = 10;
 const buttons = { play: { x: 0, y: 0, r: 22 }, dice: { x: 0, y: 0, r: 18 }, tempo: { x: 0, y: 0, w: 0, h: 0 }, key: { x: 0, y: 0, w: 0, h: 0 } };
 let chips = []; // the strip's clickable parts, rebuilt each frame
+const rowBtns = []; // the strip rows' mute / remove buttons, rebuilt each frame
 window.chips = chips;
+window.rowBtns = rowBtns;
 
 // ---------- rough, hand-cut shapes ----------
 function jit(seed, i, amp) {
@@ -299,24 +302,13 @@ function synthShift() {
 }
 const plays = (id, k, inst) => !!partsOf(id)[k]?.playing.includes(inst);
 
-// The parts a track row offers. The track on every instrument it has: all
-// its parts. On some instruments only: the parts where they all really play
-// (else where any of them does)
-function offered(id, insts = instsOn(id)) {
-  const parts = partsOf(id);
-  const idx = parts.map((_, k) => k);
-  if (stemsOf(id).every((i) => insts.includes(i))) return idx;
-  const all = idx.filter((k) => insts.every((i) => plays(id, k, i)));
-  if (all.length) return all;
-  const any = idx.filter((k) => insts.some((i) => plays(id, k, i)));
-  return any.length ? any : idx;
-}
-// Which part a group plays: the current one if still offered, else the
-// first offered `all` part, else the first offered
-function groupPart(id, insts = instsOn(id), current = null) {
-  const ok = offered(id, insts);
-  if (current != null && ok.includes(current)) return current;
-  return ok.find((k) => partsOf(id)[k].all) ?? ok[0] ?? 0;
+// The parts a track row offers: all of them, the same count whatever
+// instruments hold the song (owner, 2026-11-24: one song, one set of parts)
+const offered = (id) => partsOf(id).map((_, k) => k);
+// Which part a group plays: the current one, else the first `all` part
+function groupPart(id, current = null) {
+  if (current != null && current < partsOf(id).length) return current;
+  return Math.max(0, partsOf(id).findIndex((p) => p.all));
 }
 // Double-click: the first `all` part, else the fullest
 function defaultPart(id) {
@@ -374,37 +366,42 @@ function relaunchGroup(id, extra = []) {
   if (tempoOn && drumsOn(id)) return startTable(extra);
   return launch(spots.filter((s) => s.track === id), extra);
 }
-// A track lost or gained an instrument: keep its part only if it is still
-// one where its instruments really play
-function refit(id) {
-  if (!id || !spots.some((s) => s.track === id)) return;
-  const cur = spots.find((s) => s.track === id).part;
-  const k = groupPart(id, instsOn(id), cur);
-  if (k !== cur) { setPart(id, k); if (running) relaunchGroup(id); }
-}
 function drop(s, id) {
   if (s.track === id) return;
-  const before = s.track;
   const old = s.voice;
   s.voice = null;
   const mate = spots.find((x) => x !== s && x.track === id);
   s.track = id; s.muted = false;
-  setPart(id, groupPart(id, instsOn(id), mate ? mate.part : null));
+  setPart(id, groupPart(id, mate ? mate.part : null));
   if (running && keyOn && (s.inst === 'piano' || s.inst === 'synth')) startTable([old]);
   else relaunchGroup(id, [old]);
-  refit(before);
   layout();
 }
 function silence(s) {
-  const leader = tempoOn && s.inst === 'drums' && running;
-  const before = s.track;
-  if (s.voice) s.voice.stop(0.4);
-  s.voice = null; s.track = null; s.muted = false; s.pending = 0;
+  silenceAll([s]);
+}
+// Take these instruments off the table at once (one restart at most)
+function silenceAll(list) {
+  const leader = tempoOn && running && list.some((s) => s.inst === 'drums');
+  const keyed = keyOn && running && list.some((s) => s.inst === 'piano' || s.inst === 'synth');
+  list.forEach((s) => {
+    if (s.voice) s.voice.stop(0.4);
+    s.voice = null; s.track = null; s.muted = false; s.pending = 0;
+  });
   if (!occupied().length) running = false;
-  else if (leader) startTable(); // a new leader
-  else if (keyOn && running && (s.inst === 'piano' || s.inst === 'synth')) startTable(); // the synth's key
-  refit(before);
+  else if (leader || keyed) startTable(); // a new leader, or the synth's key
   layout();
+}
+// A strip row's buttons: the whole song muted / back, or off the table
+function toggleRow(id) {
+  const on = spots.filter((s) => s.track === id);
+  const mute = on.some((s) => !s.muted);
+  on.forEach((s) => { s.muted = mute; s.shake = 0.6; if (s.voice) s.voice.setGain(gainOf(s), 0.08); });
+  say(`${eng.byId[id].title} ${mute ? 'coupé' : 'remis'}`);
+}
+function removeRow(id) {
+  say(`${eng.byId[id].title} retiré de la table`);
+  silenceAll(spots.filter((s) => s.track === id));
 }
 // The one switch: tempo matched to the drums AND the synth keyed to the
 // piano, or both free
@@ -515,12 +512,13 @@ function say(t, ms = 2200) { tempHint = t; hintUntil = millis() + ms; }
 // Phone portrait: 2×2 instruments, 2×5 compact cards, the buttons at the
 // bottom (thumb). Phone landscape: one row of cards, the strip in 2 columns
 const MIN_TOUCH = 44;
+const ROW_BTNS_W = 2 * MIN_TOUCH + 4; // the strip rows' buttons: their room at the right end
 let L = { portrait: false, stripCols: 1, stripX0: 0, stripX1: 0, lines: [], labelW: 0, hintLines: 1, cardRows: 2 };
 function rowSpec(id, colW) {
   const n = offered(id).length;
-  const avail = colW - L.labelW - 4;
+  const avail = colW - L.labelW - ROW_BTNS_W - 4;
   const stagger = n * (MIN_TOUCH + 2) > avail;
-  return { id, stagger, h: stagger ? 96 : 52 };
+  return { id, stagger, h: stagger ? 100 : 60 };
 }
 function layout() {
   if (isCompact()) return layoutCompact();
@@ -1077,7 +1075,7 @@ function setup() {
     loadPresetFromHash();
   }).catch((err) => { loadError = String(err); console.error(err); });
   window.spots = spots;
-  window.table = { encodePreset, decodePreset, applyPreset, openKeep, presetLink, stepPart, get presetPending() { return presetPending; }, toggleAlign, get sliders() { return !!L.sliders; }, get compact() { return !!L.compact; }, get issues() { return compactIssues; }, singleSong, tapToken, get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo };
+  window.table = { encodePreset, decodePreset, applyPreset, openKeep, presetLink, stepPart, get presetPending() { return presetPending; }, toggleAlign, get sliders() { return !!L.sliders; }, get compact() { return !!L.compact; }, get issues() { return compactIssues; }, singleSong, tapToken, get running() { return running; }, get tempoOn() { return tempoOn; }, get keyOn() { return keyOn; }, toggleKey, synthShift, wholeTrack, choosePart, randomTable, rollTable, mainButton, offered, plays, toggleTempo, toggleRow, removeRow };
   layout();
 }
 function windowResized() { resizeCanvas(windowWidth, windowHeight); layout(); }
@@ -1555,6 +1553,7 @@ function drawSpot(s) {
 // are in the song. Parts not offered: faint ticks
 function drawStrip() {
   chips.length = 0;
+  rowBtns.length = 0;
   if (!eng) return;
   textStyle(BOLD);
   if (!L.lines.length) {
@@ -1581,21 +1580,35 @@ function drawRow(row, X0, X1, top, h) {
   const my = row.stagger ? ly : ly - 8;
   fill(PAPER); roughEllipse(X0 + 13, my, 13, 13, 600 + c.i, 0.8);
   motif(c.i, X0 + 13, my, 8, 700 + c.i * 17);
+  const on = spots.filter((s) => s.track === id);
+  const allMuted = on.every((s) => s.muted);
   if (!narrow) {
-    fill(PAPER); textAlign(LEFT, CENTER); let ls = 14; textSize(ls);
+    fill(allMuted ? FADED : PAPER); textAlign(LEFT, CENTER); let ls = 14; textSize(ls);
     while (textWidth(c.title) > L.labelW - 34 && ls > 12) textSize(--ls);
     text(c.title, X0 + 30, my);
   }
-  const x0 = X0 + L.labelW, x1 = X1;
+  // the instruments playing it: their icons under the title (faded: muted)
+  on.forEach((s, i) => {
+    push();
+    translate(X0 + (narrow ? 13 : 40) + i * 30, my + 21);
+    INK = s.muted ? FADED : PAPER;
+    drawInstrument(s.inst, 12, 100 + s.i * 31);
+    INK = PAPER;
+    pop();
+  });
+  // mute / unmute the song, take it off the table
+  [{ kind: 'mute', x: X1 - MIN_TOUCH * 1.5 - 4 }, { kind: 'remove', x: X1 - MIN_TOUCH / 2 }].forEach((b, i) => {
+    fill(b.kind === 'mute' && allMuted ? ORANGE : PAPER);
+    roughEllipse(b.x, ly, 14, 14, 1340 + c.i * 3 + i, 0.6);
+    if (b.kind === 'mute') speakerIcon(b.x, ly, allMuted);
+    else { stroke(BLUE); strokeWeight(3); strokeCap(ROUND); line(b.x - 5, ly - 5, b.x + 5, ly + 5); line(b.x - 5, ly + 5, b.x + 5, ly - 5); noStroke(); }
+    rowBtns.push({ id, kind: b.kind, x: b.x - MIN_TOUCH / 2, y: ly - MIN_TOUCH / 2, w: MIN_TOUCH, h: MIN_TOUCH });
+  });
+  const x0 = X0 + L.labelW, x1 = X1 - ROW_BTNS_W;
   const dur = Math.max(...parts.map((p) => p.end)) * 1.03;
   const sx = (tm) => x0 + (tm / dur) * (x1 - x0);
   fill(FADED); rect(x0, ly - 1, x1 - x0, 2);
-  // not offered: a faint tick
-  parts.forEach((p, k) => {
-    if (ok.includes(k)) return;
-    fill(FADED); rect(sx(p.start), ly - 3, Math.max(2, sx(p.end) - sx(p.start)), 6);
-  });
-  // offered: chips, near their place, never closer than a finger
+  // the parts: chips, near their place, never closer than a finger
   const cw = 40, pitch = MIN_TOUCH + 2;
   const place = (ks) => {
     const xs = ks.map((k) => Math.min(Math.max((sx(parts[k].start) + sx(parts[k].end)) / 2, x0 + cw / 2), x1 - cw / 2));
@@ -1636,6 +1649,18 @@ function drawRow(row, X0, X1, top, h) {
       }
     });
   });
+}
+
+// A loudspeaker, crossed out when muted (blue on a paper button)
+function speakerIcon(x, y, muted) {
+  fill(BLUE); noStroke();
+  rect(x - 7, y - 3, 4, 6);
+  triangle(x - 4, y - 3, x + 1, y - 7, x + 1, y + 7);
+  rect(x - 4, y - 3, 5, 6);
+  noFill(); stroke(BLUE); strokeWeight(2); strokeCap(ROUND);
+  if (muted) { line(x + 3, y - 4, x + 8, y + 4); line(x + 3, y + 4, x + 8, y - 4); }
+  else { arc(x + 2, y, 8, 9, -0.9, 0.9); arc(x + 2, y, 14, 15, -0.9, 0.9); }
+  noStroke();
 }
 
 function drawCard(c, x, y, w, h, rot, lifted) {
@@ -1718,6 +1743,8 @@ function down(e) {
     e.target.setPointerCapture(e.pointerId);
     return;
   }
+  const rb = rowBtns.find((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+  if (rb) { drag = { kind: 'row', btn: rb }; return; }
   const ch = chipAt(x, y);
   if (ch) { drag = { kind: 'chip', chip: ch }; return; }
   const c = cardAt(x, y);
@@ -1754,6 +1781,7 @@ function up(e) {
   if (d.kind === 'dice') { hatPop = millis(); return randomTable(); }
   if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
+  if (d.kind === 'row') return d.btn.kind === 'mute' ? toggleRow(d.btn.id) : removeRow(d.btn.id);
   if (d.kind === 'chip') {
     const { id, k } = d.chip;
     say(`${eng.byId[id].title} : partie ${k + 1}`);
