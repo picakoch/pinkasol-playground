@@ -618,7 +618,10 @@ let U = 1, VW = 0, VH = 0;
 // high-pass, owner 2026-11-24)
 const KNOBS = [
   { name: 'reverb', label: 'RÉVERB' }, { name: 'delay', label: 'DELAY' },
-  { name: 'filter', label: 'FILTRE', bipolar: true },
+  { name: 'filter', label: 'FILTRE', bipolar: true, ends: ['BAS', 'HAUT'], onLabel: (p) => (p < 0.5 ? 'PASSE-BAS' : 'PASSE-HAUT') },
+  // the tempo: noon = as recorded, left slower, right faster (pitch kept),
+  // 9 steps (the shared link's); the table restarts when it is let go
+  { name: 'tempo', label: 'TEMPO', bipolar: true, steps: 8, ends: ['−', '+'], onLabel: () => `TEMPO ${Math.round(eng.fx.speed * 100)} %` },
 ];
 // a knob's position, 0..1 (the filter: -1..1 in the engine, noon = 0.5)
 const knobPos = (k) => { const v = eng.fx.values[k.name]; return k.bipolar ? (v + 1) / 2 : v; };
@@ -940,9 +943,10 @@ function encodePreset() {
     const n = eng.tracks.findIndex((t) => t.id === s.track) + 1;
     return `${l}${String(n).padStart(2, '0')}.${s.part + 1}${s.muted ? 'm' : ''}`;
   });
-  // effects: "e" + reverb 0-9, delay 0-9, filter 0-8 (4 = noon), left out when off
+  // effects: "e" + reverb 0-9, delay 0-9, filter 0-8, tempo 0-8 (4 = noon),
+  // left out when all off (links with 3 digits, before the tempo: still read)
   const fx = KNOBS.map((k) => Math.round(knobPos(k) * (k.bipolar ? 8 : 9))).join('');
-  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '004' ? '' : `-e${fx}`);
+  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '0044' ? '' : `-e${fx}`);
 }
 function decodePreset(code) {
   if (!eng || typeof code !== 'string' || !code.length || code.length > 200 || !/^[A-Za-z0-9._~-]+$/.test(code)) return null;
@@ -953,8 +957,8 @@ function decodePreset(code) {
   for (const tok of m[1].split('-')) {
     const a = /^a([01])$/.exec(tok);
     if (a) { if (out.align === null) out.align = a[1] === '1'; continue; }
-    const e = /^e(\d)(\d)([0-8])$/.exec(tok);
-    if (e) { if (!out.fx) out.fx = [Number(e[1]) / 9, Number(e[2]) / 9, Number(e[3]) / 8]; continue; }
+    const e = /^e(\d)(\d)([0-8])([0-8])?$/.exec(tok);
+    if (e) { if (!out.fx) out.fx = [Number(e[1]) / 9, Number(e[2]) / 9, Number(e[3]) / 8, Number(e[4] ?? 4) / 8]; continue; }
     const t = /^([dpsb])(?:0|(\d{2})\.(\d{1,2})(m?))$/.exec(tok);
     if (!t) continue;
     const inst = byLetter[t[1]];
@@ -1067,11 +1071,11 @@ function drawKnobs() {
     line(k.x + Math.cos(a) * k.r * 0.25, k.y + Math.sin(a) * k.r * 0.25, k.x + Math.cos(a) * k.r * 0.8, k.y + Math.sin(a) * k.r * 0.8);
     noStroke();
     fill(on ? PAPER : FADED); textStyle(BOLD); textSize(11); textAlign(CENTER, CENTER);
-    const label = k.bipolar && on ? (p < 0.5 ? 'PASSE-BAS' : 'PASSE-HAUT') : k.label;
+    const label = k.onLabel && on ? k.onLabel(p) : k.label;
     text(label, k.x, k.y + k.r + 16);
-    if (k.bipolar) { // small marks at the ends: the low-pass side, the high-pass side
-      fill(on ? PAPER : FADED); textSize(9);
-      text('BAS', k.x - k.r - 12, k.y + k.r + 2); text('HAUT', k.x + k.r + 14, k.y + k.r + 2);
+    if (k.ends) { // small marks at the ends (filter: low / high; tempo: − / +)
+      fill(on ? PAPER : FADED); textSize(k.ends[0].length > 1 ? 9 : 13);
+      text(k.ends[0], k.x - k.r - 12, k.y + k.r + 2); text(k.ends[1], k.x + k.r + 14, k.y + k.r + 2);
     }
   });
 }
@@ -1079,6 +1083,7 @@ const knobAt = (x, y) => KNOBS.find((k) => k.r && Math.hypot(x - k.x, y - (k.y +
 function setKnob(k, p) { // p: the position, 0..1
   p = Math.min(1, Math.max(0, p));
   if (k.bipolar && Math.abs(p - 0.5) < 0.03) p = 0.5; // a notch at noon
+  if (k.steps) p = Math.round(p * k.steps) / k.steps;
   eng.fx.set(k.name, k.bipolar ? p * 2 - 1 : p);
 }
 
@@ -1821,7 +1826,8 @@ function down(e) {
     if (lastKnobTap.k === kn && now - lastKnobTap.t < 380) {
       lastKnobTap = { k: null, t: 0 };
       setKnob(kn, kn.bipolar ? 0.5 : 0);
-      say(`${kn.label} : coupé`);
+      if (kn.name === 'tempo' && running) startTable();
+      say(kn.name === 'tempo' ? 'Tempo d\'origine' : `${kn.label} : coupé`);
       return;
     }
     lastKnobTap = { k: kn, t: now };
@@ -1901,7 +1907,11 @@ function up(e) {
   if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
   if (d.kind === 'mute') return toggle(d.s);
-  if (d.kind === 'knob') return;
+  if (d.kind === 'knob') {
+    // the tempo: the table restarts at its new speed when the knob is let go
+    if (d.k.name === 'tempo' && running && knobPos(d.k) !== d.v0) { startTable(); say(d.k.onLabel()); }
+    return;
+  }
   if (d.kind === 'chip') {
     const { s, k } = d.chip;
     say(`${NAMES[s.inst]} : ${eng.byId[s.track].title}, partie ${k + 1}`);
