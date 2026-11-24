@@ -619,9 +619,9 @@ let U = 1, VW = 0, VH = 0;
 const KNOBS = [
   { name: 'reverb', label: 'RÉVERB' }, { name: 'delay', label: 'DELAY' },
   { name: 'filter', label: 'FILTRE', bipolar: true, ends: ['BAS', 'HAUT'], onLabel: (p) => (p < 0.5 ? 'PASSE-BAS' : 'PASSE-HAUT') },
-  // the tempo: noon = as recorded, left slower, right faster (pitch kept),
-  // 9 steps (the shared link's); the table restarts when it is let go
-  { name: 'tempo', label: 'TEMPO', bipolar: true, steps: 8, ends: ['−', '+'], onLabel: () => `TEMPO ${Math.round(eng.fx.speed * 100)} %` },
+  // the tempo: noon = as recorded, left slower, right faster; live while
+  // turned (the pitch moves), then on the next bar stretched, pitch kept
+  { name: 'tempo', label: 'TEMPO', bipolar: true, ends: ['−', '+'], onLabel: () => `TEMPO ${Math.round(eng.fx.speed * 100)} %` },
 ];
 // a knob's position, 0..1 (the filter: -1..1 in the engine, noon = 0.5)
 const knobPos = (k) => { const v = eng.fx.values[k.name]; return k.bipolar ? (v + 1) / 2 : v; };
@@ -708,6 +708,8 @@ function layoutCompact() {
   // play / stop alone at the top: no random button (owner, 2026-11-24)
   buttons.play = { x: W / 2, y: y + tbH / 2, r: short ? 21 : 24 };
   buttons.dice = null;
+  // ↺ RESET: every effect knob back to zero, right of play
+  buttons.reset = { x: W / 2 + 46, y: y + tbH / 2 - 22, w: 84, h: 44 };
   y += tbH;
   const kgap = Math.min(120, (W - 2 * pad) / KNOBS.length);
   KNOBS.forEach((k, i) => {
@@ -764,6 +766,7 @@ function drawCompactScaled() {
   spots.forEach(drawSpotCompact);
   drawButtons();
   drawKnobs();
+  drawResetButton();
   // the instruction above the tokens; a shared table waiting for a gesture,
   // or a passing message, take its place (on paper for the shared table)
   textAlign(CENTER, CENTER); textStyle(BOLD);
@@ -943,22 +946,25 @@ function encodePreset() {
     const n = eng.tracks.findIndex((t) => t.id === s.track) + 1;
     return `${l}${String(n).padStart(2, '0')}.${s.part + 1}${s.muted ? 'm' : ''}`;
   });
-  // effects: "e" + reverb 0-9, delay 0-9, filter 0-8, tempo 0-8 (4 = noon),
-  // left out when all off (links with 3 digits, before the tempo: still read)
-  const fx = KNOBS.map((k) => Math.round(knobPos(k) * (k.bipolar ? 8 : 9))).join('');
-  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '0044' ? '' : `-e${fx}`);
+  // effects: "e" + reverb 0-9, delay 0-9, filter 0-8 (4 = noon), left out
+  // when off; the tempo: "t" + its percent (71-141), left out at 100
+  const fx = KNOBS.filter((k) => k.name !== 'tempo').map((k) => Math.round(knobPos(k) * (k.bipolar ? 8 : 9))).join('');
+  const pct = Math.round(eng.fx.speed * 100);
+  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '004' ? '' : `-e${fx}`) + (pct === 100 ? '' : `-t${pct}`);
 }
 function decodePreset(code) {
   if (!eng || typeof code !== 'string' || !code.length || code.length > 200 || !/^[A-Za-z0-9._~-]+$/.test(code)) return null;
   const m = /^1~(.*)$/.exec(code);
   if (!m) return null;
   const byLetter = { d: 'drums', p: 'piano', s: 'synth', b: 'bass' };
-  const out = { spots: {}, align: null, fx: null };
+  const out = { spots: {}, align: null, fx: null, tempo: null };
   for (const tok of m[1].split('-')) {
     const a = /^a([01])$/.exec(tok);
     if (a) { if (out.align === null) out.align = a[1] === '1'; continue; }
-    const e = /^e(\d)(\d)([0-8])([0-8])?$/.exec(tok);
-    if (e) { if (!out.fx) out.fx = [Number(e[1]) / 9, Number(e[2]) / 9, Number(e[3]) / 8, Number(e[4] ?? 4) / 8]; continue; }
+    const e = /^e(\d)(\d)([0-8])$/.exec(tok);
+    if (e) { if (!out.fx) out.fx = [Number(e[1]) / 9, Number(e[2]) / 9, Number(e[3]) / 8]; continue; }
+    const tp = /^t(\d{2,3})$/.exec(tok);
+    if (tp) { const n = Number(tp[1]); if (out.tempo == null && n >= 71 && n <= 141) out.tempo = n; continue; }
     const t = /^([dpsb])(?:0|(\d{2})\.(\d{1,2})(m?))$/.exec(tok);
     if (!t) continue;
     const inst = byLetter[t[1]];
@@ -969,7 +975,7 @@ function decodePreset(code) {
     if (!tr || !(k >= 0 && k < (tr.parts || []).length) || !accepts(spotOf(inst), tr.id)) continue;
     out.spots[inst] = { track: tr.id, part: k, muted: t[4] === 'm' };
   }
-  return Object.keys(out.spots).length || out.align !== null || out.fx ? out : null;
+  return Object.keys(out.spots).length || out.align !== null || out.fx || out.tempo ? out : null;
 }
 // The table as the code says, silent until a gesture (browsers need one)
 function applyPreset(p) {
@@ -980,7 +986,10 @@ function applyPreset(p) {
     s.track = v ? v.track : null; s.part = v ? v.part : 0; s.muted = v ? v.muted : false;
   });
   if (p.align !== null) { tempoOn = keyOn = p.align; eng.tempoMatch = p.align; }
-  KNOBS.forEach((k, i) => setKnob(k, p.fx ? p.fx[i] : k.bipolar ? 0.5 : 0));
+  KNOBS.forEach((k, i) => {
+    if (k.name === 'tempo') setKnob(k, p.tempo ? Math.log2(p.tempo / 100) + 0.5 : 0.5);
+    else setKnob(k, p.fx ? p.fx[i] : k.bipolar ? 0.5 : 0);
+  });
   presetPending = occupied().length > 0;
   if (presetPending) { hint = PRESET_HINT; started = true; }
   layout();
@@ -1079,12 +1088,39 @@ function drawKnobs() {
     }
   });
 }
+// The tempo knob let go: on the next bar, every instrument again, stretched
+// to the new tempo (pitch back where it belongs, no jump to the loop's start)
+function settleTempo() {
+  if (running && occupied().length) launch(occupied());
+}
 const knobAt = (x, y) => KNOBS.find((k) => k.r && Math.hypot(x - k.x, y - (k.y + 6)) <= k.r + 22) || null;
 function setKnob(k, p) { // p: the position, 0..1
   p = Math.min(1, Math.max(0, p));
   if (k.bipolar && Math.abs(p - 0.5) < 0.03) p = 0.5; // a notch at noon
-  if (k.steps) p = Math.round(p * k.steps) / k.steps;
+  if (k.name === 'tempo') { // to the whole percent (the shared link's)
+    const pct = Math.round(2 ** (p - 0.5) * 100);
+    p = Math.log2(pct / 100) + 0.5;
+  }
   eng.fx.set(k.name, k.bipolar ? p * 2 - 1 : p);
+}
+
+// The effects at rest: reverb and delay at 0, filter and tempo at noon
+const knobRest = (k) => (k.bipolar ? 0.5 : 0);
+const fxAtRest = () => !eng || KNOBS.every((k) => Math.abs(knobPos(k) - knobRest(k)) < 1e-6);
+function drawResetButton() {
+  const r = buttons.reset;
+  if (!r) return;
+  const idle = fxAtRest();
+  fill(idle ? FADED : PAPER);
+  roughRect(r.x + 2, r.y + 8, r.w - 4, r.h - 16, 1390, 1);
+  fill(BLUE); textStyle(BOLD); textSize(12); textAlign(CENTER, CENTER);
+  text('↺ RESET', r.x + r.w / 2, r.y + r.h / 2 - 1);
+}
+function resetFx() {
+  const tempoMoved = Math.abs(knobPos(KNOBS[3]) - 0.5) > 1e-6;
+  KNOBS.forEach((k) => setKnob(k, knobRest(k)));
+  if (tempoMoved) settleTempo();
+  say('Effets remis à zéro');
 }
 
 function drawKeepButton() {
@@ -1820,13 +1856,15 @@ function down(e) {
   eng.unlock();
   if (onButton(buttons.play, x, y)) { drag = { kind: 'play' }; return; }
   if (buttons.dice && onButton(buttons.dice, x, y)) { drag = { kind: 'dice' }; return; }
+  const rs = buttons.reset;
+  if (rs && x >= rs.x && x <= rs.x + rs.w && y >= rs.y && y <= rs.y + rs.h) { drag = { kind: 'reset' }; return; }
   const kn = knobAt(x, y);
   if (kn) {
     const now = millis();
     if (lastKnobTap.k === kn && now - lastKnobTap.t < 380) {
       lastKnobTap = { k: null, t: 0 };
       setKnob(kn, kn.bipolar ? 0.5 : 0);
-      if (kn.name === 'tempo' && running) startTable();
+      if (kn.name === 'tempo' && running) settleTempo();
       say(kn.name === 'tempo' ? 'Tempo d\'origine' : `${kn.label} : coupé`);
       return;
     }
@@ -1907,9 +1945,10 @@ function up(e) {
   if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
   if (d.kind === 'mute') return toggle(d.s);
+  if (d.kind === 'reset') return resetFx();
   if (d.kind === 'knob') {
     // the tempo: the table restarts at its new speed when the knob is let go
-    if (d.k.name === 'tempo' && running && knobPos(d.k) !== d.v0) { startTable(); say(d.k.onLabel()); }
+    if (d.k.name === 'tempo' && running && knobPos(d.k) !== d.v0) { settleTempo(); say(d.k.onLabel()); }
     return;
   }
   if (d.kind === 'chip') {
