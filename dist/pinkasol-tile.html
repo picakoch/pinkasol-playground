@@ -1154,8 +1154,9 @@ function layoutCompact() {
   const ch = Math.max(60, Math.min(H - 2 * pad - fixed, cw * 1.25 + 24 + (short ? 16 : L.arrowsH)));
   // the whole stack centred
   let y = Math.max(pad, (H - fixed - ch) / 2);
-  buttons.play = { x: W / 2 - 36, y: y + tbH / 2, r: short ? 21 : 24 };
-  buttons.dice = { x: W / 2 + 36, y: y + tbH / 2, r: short ? 19 : 22 };
+  // play / stop alone at the top: no random button (owner, 2026-11-24)
+  buttons.play = { x: W / 2, y: y + tbH / 2, r: short ? 21 : 24 };
+  buttons.dice = null;
   y += tbH;
   const kgap = Math.min(120, (W - 2 * pad) / KNOBS.length);
   KNOBS.forEach((k, i) => {
@@ -1668,6 +1669,7 @@ function drawButtons() {
   // orange star, cut out of the cover (img/cover-medium.webp: in the tile,
   // the cover from the site's own media library). Pops and turns when pressed
   const d = buttons.dice;
+  if (!d) return drawKeepButton();
   const dhot = !drag && dist((mouseX / U), (mouseY / U), d.x, d.y) < d.r + 4;
   const since = (millis() - hatPop) / 1000;
   const lift = since < 0.45 ? Math.sin(Math.PI * since / 0.45) : 0;
@@ -2264,7 +2266,7 @@ function down(e) {
   if (!started) { started = true; hint = HINT1; }
   eng.unlock();
   if (onButton(buttons.play, x, y)) { drag = { kind: 'play' }; return; }
-  if (onButton(buttons.dice, x, y)) { drag = { kind: 'dice' }; return; }
+  if (buttons.dice && onButton(buttons.dice, x, y)) { drag = { kind: 'dice' }; return; }
   const kn = knobAt(x, y);
   if (kn) {
     const now = millis();
