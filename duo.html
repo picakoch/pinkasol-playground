@@ -614,10 +614,14 @@ const SHORT_HINT = 'Touchez une chanson · glissez-la sur un instrument';
 // screens: laid out on a virtual canvas of VW × VH, drawn at U times
 const isCompact = () => true;
 let U = 1, VW = 0, VH = 0;
+// the effects' knobs; the filter's starts at noon (left: low-pass, right:
+// high-pass, owner 2026-11-24)
 const KNOBS = [
   { name: 'reverb', label: 'RÉVERB' }, { name: 'delay', label: 'DELAY' },
-  { name: 'high', label: 'PASSE-HAUT' }, { name: 'low', label: 'PASSE-BAS' },
+  { name: 'filter', label: 'FILTRE', bipolar: true },
 ];
+// a knob's position, 0..1 (the filter: -1..1 in the engine, noon = 0.5)
+const knobPos = (k) => { const v = eng.fx.values[k.name]; return k.bipolar ? (v + 1) / 2 : v; };
 let lastKnobTap = { k: null, t: 0 };
 let compactIssues = []; // texts that would not fit (tests)
 
@@ -701,10 +705,10 @@ function layoutCompact() {
   buttons.play = { x: W / 2 - 36, y: y + tbH / 2, r: short ? 21 : 24 };
   buttons.dice = { x: W / 2 + 36, y: y + tbH / 2, r: short ? 19 : 22 };
   y += tbH;
-  const kgap = Math.min(110, (W - 2 * pad) / 4);
+  const kgap = Math.min(120, (W - 2 * pad) / KNOBS.length);
   KNOBS.forEach((k, i) => {
     k.r = kh ? 20 : 0;
-    k.x = W / 2 + (i - 1.5) * kgap;
+    k.x = W / 2 + (i - (KNOBS.length - 1) / 2) * kgap;
     k.y = y + 28;
   });
   y += kh;
@@ -934,8 +938,9 @@ function encodePreset() {
     const n = eng.tracks.findIndex((t) => t.id === s.track) + 1;
     return `${l}${String(n).padStart(2, '0')}.${s.part + 1}${s.muted ? 'm' : ''}`;
   });
-  const fxv = eng.fx.values, fx = KNOBS.map((k) => Math.round(fxv[k.name] * 9)).join('');
-  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '0000' ? '' : `-e${fx}`);
+  // effects: "e" + reverb 0-9, delay 0-9, filter 0-8 (4 = noon), left out when off
+  const fx = KNOBS.map((k) => Math.round(knobPos(k) * (k.bipolar ? 8 : 9))).join('');
+  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '004' ? '' : `-e${fx}`);
 }
 function decodePreset(code) {
   if (!eng || typeof code !== 'string' || !code.length || code.length > 200 || !/^[A-Za-z0-9._~-]+$/.test(code)) return null;
@@ -946,8 +951,8 @@ function decodePreset(code) {
   for (const tok of m[1].split('-')) {
     const a = /^a([01])$/.exec(tok);
     if (a) { if (out.align === null) out.align = a[1] === '1'; continue; }
-    const e = /^e(\d{4})$/.exec(tok);
-    if (e) { if (!out.fx) out.fx = [...e[1]].map((d) => Number(d) / 9); continue; }
+    const e = /^e(\d)(\d)([0-8])$/.exec(tok);
+    if (e) { if (!out.fx) out.fx = [Number(e[1]) / 9, Number(e[2]) / 9, Number(e[3]) / 8]; continue; }
     const t = /^([dpsb])(?:0|(\d{2})\.(\d{1,2})(m?))$/.exec(tok);
     if (!t) continue;
     const inst = byLetter[t[1]];
@@ -969,7 +974,7 @@ function applyPreset(p) {
     s.track = v ? v.track : null; s.part = v ? v.part : 0; s.muted = v ? v.muted : false;
   });
   if (p.align !== null) { tempoOn = keyOn = p.align; eng.tempoMatch = p.align; }
-  KNOBS.forEach((k, i) => eng.fx.set(k.name, p.fx ? p.fx[i] : 0));
+  KNOBS.forEach((k, i) => setKnob(k, p.fx ? p.fx[i] : k.bipolar ? 0.5 : 0));
   presetPending = occupied().length > 0;
   if (presetPending) { hint = PRESET_HINT; started = true; }
   layout();
@@ -1046,25 +1051,33 @@ const keepOpen = () => !$('keep').hidden;
 const KA0 = Math.PI * 0.75, KA1 = Math.PI * 2.25;
 function drawKnobs() {
   if (!eng) return;
-  const vals = eng.fx.values;
   KNOBS.forEach((k, i) => {
     if (!k.r) return;
-    const v = vals[k.name], a = KA0 + (KA1 - KA0) * v;
+    const p = knobPos(k), a = KA0 + (KA1 - KA0) * p;
+    const from = k.bipolar ? (KA0 + KA1) / 2 : KA0; // the arc from noon, or from the left stop
+    const on = Math.abs(a - from) > 0.01;
     noFill(); strokeCap(ROUND);
     stroke(FADED); strokeWeight(4); arc(k.x, k.y, k.r * 2 + 12, k.r * 2 + 12, KA0, KA1);
-    if (v > 0.002) { stroke(ORANGE); arc(k.x, k.y, k.r * 2 + 12, k.r * 2 + 12, KA0, a); }
+    if (on) { stroke(ORANGE); arc(k.x, k.y, k.r * 2 + 12, k.r * 2 + 12, Math.min(from, a), Math.max(from, a)); }
     noStroke();
     fill(PAPER); roughEllipse(k.x, k.y, k.r, k.r, 1380 + i * 7, 0.8);
     stroke(BLUE); strokeWeight(3.5);
     line(k.x + Math.cos(a) * k.r * 0.25, k.y + Math.sin(a) * k.r * 0.25, k.x + Math.cos(a) * k.r * 0.8, k.y + Math.sin(a) * k.r * 0.8);
     noStroke();
-    fill(v > 0.002 ? PAPER : FADED); textStyle(BOLD); textSize(11); textAlign(CENTER, CENTER);
-    text(k.label, k.x, k.y + k.r + 16);
+    fill(on ? PAPER : FADED); textStyle(BOLD); textSize(11); textAlign(CENTER, CENTER);
+    const label = k.bipolar && on ? (p < 0.5 ? 'PASSE-BAS' : 'PASSE-HAUT') : k.label;
+    text(label, k.x, k.y + k.r + 16);
+    if (k.bipolar) { // small marks at the ends: the low-pass side, the high-pass side
+      fill(on ? PAPER : FADED); textSize(9);
+      text('BAS', k.x - k.r - 12, k.y + k.r + 2); text('HAUT', k.x + k.r + 14, k.y + k.r + 2);
+    }
   });
 }
 const knobAt = (x, y) => KNOBS.find((k) => k.r && Math.hypot(x - k.x, y - (k.y + 6)) <= k.r + 22) || null;
-function setKnob(k, v) {
-  eng.fx.set(k.name, v);
+function setKnob(k, p) { // p: the position, 0..1
+  p = Math.min(1, Math.max(0, p));
+  if (k.bipolar && Math.abs(p - 0.5) < 0.03) p = 0.5; // a notch at noon
+  eng.fx.set(k.name, k.bipolar ? p * 2 - 1 : p);
 }
 
 function drawKeepButton() {
@@ -1804,12 +1817,12 @@ function down(e) {
     const now = millis();
     if (lastKnobTap.k === kn && now - lastKnobTap.t < 380) {
       lastKnobTap = { k: null, t: 0 };
-      setKnob(kn, 0);
+      setKnob(kn, kn.bipolar ? 0.5 : 0);
       say(`${kn.label} : coupé`);
       return;
     }
     lastKnobTap = { k: kn, t: now };
-    drag = { kind: 'knob', k: kn, x0: x, y0: y, v0: eng.fx.values[kn.name] };
+    drag = { kind: 'knob', k: kn, x0: x, y0: y, v0: knobPos(kn) };
     e.target.setPointerCapture(e.pointerId);
     return;
   }
