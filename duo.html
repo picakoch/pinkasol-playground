@@ -301,13 +301,13 @@ function synthShift() {
 }
 const plays = (id, k, inst) => !!partsOf(id)[k]?.playing.includes(inst);
 
-// The parts a track row offers: all of them, the same count whatever
-// instruments hold the song (owner, 2026-11-24: one song, one set of parts)
+// The parts of a song (all of them: a double-click goes through every one)
 const offered = (id) => partsOf(id).map((_, k) => k);
-// Which part a group plays: the current one, else the first `all` part
-function groupPart(id, current = null) {
-  if (current != null && current < partsOf(id).length) return current;
-  return Math.max(0, partsOf(id).findIndex((p) => p.all));
+// The parts an instrument's row offers: only those where it really plays
+// (owner, 2026-11-24: no silent loops on a row); all if it never does
+function offeredFor(s, id = s.track) {
+  const ks = offered(id).filter((k) => plays(id, k, s.inst));
+  return ks.length ? ks : offered(id);
 }
 // Double-click: the first `all` part, else the fullest
 function defaultPart(id) {
@@ -371,7 +371,9 @@ function drop(s, id) {
   s.voice = null;
   const mate = spots.find((x) => x !== s && x.track === id);
   s.track = id; s.muted = false;
-  setPart(id, groupPart(id, mate ? mate.part : null));
+  // the mates' part (as recorded) when it plays there, else its first part
+  const k = mate && plays(id, mate.part, s.inst) ? mate.part : null;
+  s.part = k ?? (offeredFor(s, id).find((j) => partsOf(id)[j].all) ?? offeredFor(s, id)[0]);
   if (running && keyOn && (s.inst === 'piano' || s.inst === 'synth')) startTable([old]);
   else relaunchGroup(id, [old]);
   layout();
@@ -515,7 +517,7 @@ const MIN_TOUCH = 44;
 const ROW_BTNS_W = MIN_TOUCH + 4; // the strip rows' mute button: its room at the right end
 let L = { portrait: false, stripCols: 1, stripX0: 0, stripX1: 0, lines: [], labelW: 0, hintLines: 1, cardRows: 2 };
 function rowSpec(s, colW) {
-  const n = s.track ? offered(s.track).length : 0;
+  const n = s.track ? offeredFor(s).length : 0;
   const avail = colW - L.labelW - ROW_BTNS_W - 4;
   const stagger = n * (MIN_TOUCH + 2) > avail;
   return { s, stagger, h: stagger ? 96 : 52 };
@@ -777,7 +779,7 @@ function drawCompact() {
 
 // The ‹ › under an instrument: small paper buttons, 40 px targets
 // (faded, and doing nothing, when the song has a single part to offer)
-const canStep = (s) => !!s.track && offered(s.track).length > 1;
+const canStep = (s) => !!s.track && offeredFor(s).length > 1;
 function drawArrows(s) {
   const on = canStep(s);
   s.arrows.forEach((a, i) => {
@@ -1024,7 +1026,7 @@ function drawKeepButton() {
 // Compact: the part of an instrument's song, one step back or on
 function stepPart(s, dir) {
   if (!s.track) return;
-  const id = s.track, ks = offered(id);
+  const id = s.track, ks = offeredFor(s);
   if (ks.length < 2) return; // a single part: nothing to change to
   const i = ks.indexOf(s.part);
   const k = ks[i < 0 ? 0 : (i + dir + ks.length) % ks.length];
@@ -1596,7 +1598,7 @@ function drawRow(row, X0, X1, top, h) {
   speakerIcon(bx, ly, s.muted);
   rowBtns.push({ s, x: bx - MIN_TOUCH / 2, y: ly - MIN_TOUCH / 2, w: MIN_TOUCH, h: MIN_TOUCH });
   if (grey) drawingContext.globalAlpha = GREY_A;
-  const parts = partsOf(id), cur = s.part, ok = offered(id);
+  const parts = partsOf(id), cur = s.part, ok = offeredFor(s);
   const x0 = X0 + L.labelW, x1 = X1 - ROW_BTNS_W;
   const dur = Math.max(...parts.map((p) => p.end)) * 1.03;
   const sx = (tm) => x0 + (tm / dur) * (x1 - x0);
@@ -1622,13 +1624,12 @@ function drawRow(row, X0, X1, top, h) {
     const cy = up ? ly - 22 : ly + 22; // chip centre
     ks.forEach((k, i) => {
       const p = parts[k], isCur = k === cur;
-      const here = plays(id, k, s.inst); // this instrument plays in that part
       const a = sx(p.start), b = Math.max(sx(p.end), a + 3);
       fill(isCur ? ORANGE : PAPER); rect(a, ly - 3, b - a, 6);
       stroke(isCur ? ORANGE : FADED); strokeWeight(1);
       line(xs[i], up ? cy + 13 : cy - 13, (a + b) / 2, up ? ly - 3 : ly + 3);
       noStroke();
-      fill(isCur ? ORANGE : here || grey ? PAPER : DIM);
+      fill(isCur ? ORANGE : PAPER);
       roughRect(xs[i] - cw / 2, cy - 13, cw, 26, 800 + k * 5 + c.i + s.i * 50, 1);
       fill(BLUE); textAlign(CENTER, CENTER); textSize(14);
       text(String(k + 1), xs[i], cy - 1);
