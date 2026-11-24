@@ -159,7 +159,16 @@
     const verb = ctx.createConvolver(), verbSend = ctx.createGain(), dry = ctx.createGain();
     delaySend.gain.value = 0; verbSend.gain.value = 0; feedback.gain.value = 0.3; delay.delayTime.value = 0.375;
     master.disconnect();
-    master.connect(hp).connect(lp);
+    // While the tempo knob turns, the voices play faster / slower (varispeed)
+    // and this corrects their pitch live: two delay lines whose delay ramps
+    // (a sawtooth, 0.1 s), crossfaded ("Jungle", C. Wilson). Only between a
+    // knob move and the bar where stretched copies take over: pdry / pwet
+    const pdry = ctx.createGain(), pwet = ctx.createGain();
+    pwet.gain.value = 0;
+    const shifter = pitchShifter(ctx);
+    master.connect(pdry).connect(hp);
+    master.connect(shifter.input); shifter.output.connect(pwet).connect(hp);
+    hp.connect(lp);
     lp.connect(dry).connect(limiter);
     lp.connect(delaySend).connect(delay).connect(limiter);
     delay.connect(feedback).connect(delay);
@@ -173,7 +182,7 @@
       for (let i = pre; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2.2);
     }
     verb.buffer = ir;
-    const fxv = { reverb: 0, delay: 0, filter: 0 };
+    const fxv = { reverb: 0, delay: 0, filter: 0, tempo: 0 };
     const smooth = (param, v) => param.setTargetAtTime(v, ctx.currentTime, 0.03);
     // the delay: a dotted eighth of the table's beat (0.375 s without a clock)
     function syncDelay() {
@@ -182,10 +191,36 @@
       while (t > 1.5) t /= 2;
       smooth(delay.delayTime, t);
     }
+    // Every voice and the clock f times faster from now, phases kept; the
+    // pitch corrected by the shifter until the next (stretched) start
+    let liveF = 1; // the voices' varispeed since their start
+    function respeed(f) {
+      const now = ctx.currentTime;
+      if ([...voices].some((v) => v.src)) {
+        liveF *= f;
+        // back at the voices' own speed: no correction (the two lines would
+        // add up in phase)
+        const on = Math.abs(liveF - 1) > 0.002;
+        if (on) shifter.setPitch(1 / liveF);
+        smooth(pwet.gain, on ? 1 : 0); smooth(pdry.gain, on ? 0 : 1);
+      }
+      voices.forEach((v) => {
+        if (!v.src) return;
+        v.src.playbackRate.setValueAtTime(v.src.playbackRate.value * f, now);
+        v.rate *= f;
+        if (v.startsAt != null && v.startsAt < now) v.startsAt = now - (now - v.startsAt) / f;
+      });
+      if (clock) {
+        clock.t0 = now - (now - clock.t0) / f;
+        clock.bar /= f;
+        clock.tempo *= f;
+      }
+      syncDelay();
+    }
     const fx = {
       get values() { return { ...fxv }; },
       set(name, v) {
-        v = Math.min(1, Math.max(name === 'filter' ? -1 : 0, v));
+        v = Math.min(1, Math.max(name === 'filter' || name === 'tempo' ? -1 : 0, v));
         fxv[name] = v;
         // the reverb: up to 3x the signal into the room (the convolver
         // normalises its impulse: quiet), the dry part down to 70 %
@@ -194,6 +229,14 @@
         // the filter, -1..1: 0 nothing cut; below 0 a low-pass from 18 kHz
         // down to 250 Hz, above 0 a high-pass from 40 Hz up to 2.5 kHz
         // (exponential); one of them at a time
+        // the tempo, -1..1: x0.71 to x1.41 (2^(v/2)). Right away the whole
+        // table plays faster / slower (varispeed: the pitch moves too); the
+        // caller then restarts it on the next bar, stretched (pitch kept)
+        if (name === 'tempo') {
+          const ns = 2 ** (v / 2), f = ns / speed;
+          speed = ns;
+          if (Math.abs(f - 1) > 1e-6) respeed(f);
+        }
         if (name === 'filter') {
           const lo = Math.max(0, -v), hi = Math.max(0, v);
           smooth(lp.frequency, lo ? 18000 * Math.pow(250 / 18000, lo) : 22000);
@@ -201,6 +244,7 @@
         }
       },
       syncDelay,
+      get speed() { return speed; },
     };
 
     const decoded = new Map(); // file -> Promise<AudioBuffer>
@@ -211,6 +255,11 @@
     // Tempo matching: bar-based pieces are time-stretched (pitch kept) to
     // the clock's bar, whatever their tempo. Off: ±MATCH varispeed only
     let tempoMatch = false;
+    // The tempo knob: the whole table faster or slower, pitch kept (the
+    // leading piece stretched to its bar / speed, the others follow the
+    // clock as usual). Takes effect at the next start
+    let speed = 1;
+    const sped = () => Math.abs(speed - 1) > 0.003;
     const stretched = new Map(); // "file|alpha" -> Promise<AudioBuffer>
     // The buffer to play for `p`: stretched to `bar` (tempo matching, or
     // null) and transposed by p.semitones (stretched by the pitch ratio,
@@ -339,20 +388,26 @@
       // The first bar-based loop leads; others started meanwhile wait for it
       const lead = !clock && !leading && loop && !p.free && o.sync !== false;
       const loaded = load(p);
-      if (lead) leading = loaded.catch(() => null);
+      // the others wait for the leader's CLOCK (not only its file: a leader
+      // stretched by the tempo knob sets it later)
+      let leadDone = null;
+      if (lead) leading = new Promise((r) => { leadDone = r; });
+      const mine = leading;
+      const endLead = () => { if (leadDone) { leadDone(); leadDone = null; if (leading === mine) leading = null; } };
       Promise.all([loaded, lead ? null : synced ? leading : null]).then(async ([buf]) => {
         if (!v.playing) return;
         // Tempo matching: the stretched copy, exactly the clock's bars long;
         // a transposed piece (p.semitones): stretched by the pitch ratio and
         // played that much faster. loopLen is in the buffer's seconds
         const tempoMatched = !lead && synced && matches(p, track);
-        if (tempoMatched || p.semitones) {
-          const s = stretchedFor(p, tempoMatched ? clock.bar : null);
+        const leadSped = lead && sped(); // the tempo knob: the leader stretched
+        if (tempoMatched || p.semitones || leadSped) {
+          const s = stretchedFor(p, tempoMatched ? clock.bar : leadSped ? p.loop_end / p.bars / speed : null);
           buf = await s.buf;
           v.loopLen = p.loop_end * s.alpha;
           v.offset = (p.offset || 0) * s.alpha;
           rate = s.ratio; v.rate = rate;
-          if (tempoMatched) v.stretched = s.alphaT;
+          if (tempoMatched || leadSped) v.stretched = s.alphaT;
           v.semitones = p.semitones || 0;
           if (!v.playing) return;
         }
@@ -372,7 +427,7 @@
           const real = v.loopLen / rate; // the loop in real seconds
           clock = { t0: when, bar: real / p.bars, beats: track.meter, tempo: track.tempo * (p.loop_end / real), track: track.id };
           syncDelay();
-          leading = null;
+          endLead();
         }
         src.start(when, v.offset);
         if (!loop) src.stop(when + (buf.duration - v.offset) / rate);
@@ -382,7 +437,7 @@
         gain.gain.linearRampToValueAtTime(v.target, when + v.fadeIn);
         v.src = src; v.startsAt = when; v.ready = true;
         emit();
-      }).catch((e) => { if (lead) leading = null; console.error(e); v.stop(0); });
+      }).catch((e) => { console.error(e); v.stop(0); }).finally(endLead);
       emit();
       return v;
     }
@@ -403,14 +458,20 @@
       // ask for it, before choosing the moment: no piece may start late.
       // The first piece leads when there is no clock (put the drums first)
       const head = list[0];
-      const bar = clock ? clock.bar : head.loop_end / head.bars;
+      const bar = clock ? clock.bar : head.loop_end / head.bars / speed;
       const beats = clock ? clock.beats : trackOf(head).meter;
       await Promise.all(list.map((p) => {
         const leads = !clock && p === head;
         const matched = tempoMatch && !leads && !p.free && trackOf(p).meter === beats;
-        return matched || p.semitones ? stretchedFor(p, matched ? bar : null).buf : null;
+        const leadSped = leads && sped() && !p.free;
+        return matched || p.semitones || leadSped ? stretchedFor(p, matched || leadSped ? bar : null).buf : null;
       }));
       const at = clock ? nextTime('bar') : ctx.currentTime + (o.immediate ? 0.04 : 0.08);
+      // the voices restarted after a tempo move: no more correction from then
+      if (liveF !== 1) {
+        liveF = 1;
+        pdry.gain.setTargetAtTime(1, at, 0.01); pwet.gain.setTargetAtTime(0, at, 0.01);
+      }
       olds.filter((v) => v && v.playing).forEach((v) => v.stop(o.fade ?? (o.immediate ? 0.03 : 0.25), at));
       return list.map((p) => play(p, { ...o, at }));
     }
@@ -472,7 +533,47 @@
     };
   }
 
-  window.Pinkasol = { engine, compatible, keyShift };
+  // A live pitch shifter: input -> two delay lines -> output. setPitch(q):
+  // q times higher (0.1..1.9). Each line's delay ramps over 0.1 s (down to
+  // raise the pitch, up to lower it), the two half a period apart, faded
+  // in and out so that one is always heard
+  function pitchShifter(ctx) {
+    const sr = ctx.sampleRate, T = 0.1, n = Math.floor(T * sr);
+    const buf = (f) => { const b = ctx.createBuffer(1, n, sr); const d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = f(i / n); return b; };
+    const rampUp = buf((x) => x), rampDown = buf((x) => 1 - x);
+    const fade = buf((x) => Math.sin(Math.PI * x)); // sin + cos half a period apart: constant power
+    const input = ctx.createGain(), output = ctx.createGain();
+    const lines = [0, 1].map(() => {
+      const delay = ctx.createDelay(1), depth = ctx.createGain(), mix = ctx.createGain();
+      const up = ctx.createGain(), down = ctx.createGain();
+      mix.gain.value = 0; depth.gain.value = 0;
+      up.connect(depth); down.connect(depth); depth.connect(delay.delayTime);
+      input.connect(delay).connect(mix).connect(output);
+      return { delay, depth, mix, up, down };
+    });
+    const t = ctx.currentTime + 0.05;
+    lines.forEach((l, i) => {
+      const at = t + i * T / 2;
+      const src = (b, dest) => { const s = ctx.createBufferSource(); s.buffer = b; s.loop = true; s.connect(dest); s.start(at); return s; };
+      src(rampUp, l.down); // delay growing: the pitch lower
+      src(rampDown, l.up); // delay shrinking: the pitch higher
+      src(fade, l.mix.gain);
+    });
+    return {
+      input, output,
+      setPitch(q) {
+        // the delay changes by T * depth over T seconds: pitch = 1 -/+ depth
+        const higher = q >= 1, depth = Math.min(0.9, Math.abs(q - 1)) * T;
+        lines.forEach((l) => {
+          l.up.gain.setTargetAtTime(higher ? 1 : 0, ctx.currentTime, 0.01);
+          l.down.gain.setTargetAtTime(higher ? 0 : 1, ctx.currentTime, 0.01);
+          l.depth.gain.setTargetAtTime(depth, ctx.currentTime, 0.01);
+        });
+      },
+    };
+  }
+
+  window.Pinkasol = { engine, compatible, keyShift, pitchShifter };
 })();
 
 </script>
@@ -1070,7 +1171,10 @@ let U = 1, VW = 0, VH = 0;
 // high-pass, owner 2026-11-24)
 const KNOBS = [
   { name: 'reverb', label: 'RÉVERB' }, { name: 'delay', label: 'DELAY' },
-  { name: 'filter', label: 'FILTRE', bipolar: true },
+  { name: 'filter', label: 'FILTRE', bipolar: true, ends: ['BAS', 'HAUT'] }, // always "FILTRE" (owner)
+  // the tempo: noon = as recorded, left slower, right faster; live while
+  // turned (the pitch moves), then on the next bar stretched, pitch kept
+  { name: 'tempo', label: 'TEMPO', bipolar: true, ends: ['−', '+'], onLabel: () => `TEMPO ${Math.round(eng.fx.speed * 100)} %` },
 ];
 // a knob's position, 0..1 (the filter: -1..1 in the engine, noon = 0.5)
 const knobPos = (k) => { const v = eng.fx.values[k.name]; return k.bipolar ? (v + 1) / 2 : v; };
@@ -1157,6 +1261,8 @@ function layoutCompact() {
   // play / stop alone at the top: no random button (owner, 2026-11-24)
   buttons.play = { x: W / 2, y: y + tbH / 2, r: short ? 21 : 24 };
   buttons.dice = null;
+  // ↺ RESET: every effect knob back to zero, right of play
+  buttons.reset = { x: W / 2 + 46, y: y + tbH / 2 - 22, w: 84, h: 44 };
   y += tbH;
   const kgap = Math.min(120, (W - 2 * pad) / KNOBS.length);
   KNOBS.forEach((k, i) => {
@@ -1213,6 +1319,7 @@ function drawCompactScaled() {
   spots.forEach(drawSpotCompact);
   drawButtons();
   drawKnobs();
+  drawResetButton();
   // the instruction above the tokens; a shared table waiting for a gesture,
   // or a passing message, take its place (on paper for the shared table)
   textAlign(CENTER, CENTER); textStyle(BOLD);
@@ -1392,21 +1499,25 @@ function encodePreset() {
     const n = eng.tracks.findIndex((t) => t.id === s.track) + 1;
     return `${l}${String(n).padStart(2, '0')}.${s.part + 1}${s.muted ? 'm' : ''}`;
   });
-  // effects: "e" + reverb 0-9, delay 0-9, filter 0-8 (4 = noon), left out when off
-  const fx = KNOBS.map((k) => Math.round(knobPos(k) * (k.bipolar ? 8 : 9))).join('');
-  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '004' ? '' : `-e${fx}`);
+  // effects: "e" + reverb 0-9, delay 0-9, filter 0-8 (4 = noon), left out
+  // when off; the tempo: "t" + its percent (71-141), left out at 100
+  const fx = KNOBS.filter((k) => k.name !== 'tempo').map((k) => Math.round(knobPos(k) * (k.bipolar ? 8 : 9))).join('');
+  const pct = Math.round(eng.fx.speed * 100);
+  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '004' ? '' : `-e${fx}`) + (pct === 100 ? '' : `-t${pct}`);
 }
 function decodePreset(code) {
   if (!eng || typeof code !== 'string' || !code.length || code.length > 200 || !/^[A-Za-z0-9._~-]+$/.test(code)) return null;
   const m = /^1~(.*)$/.exec(code);
   if (!m) return null;
   const byLetter = { d: 'drums', p: 'piano', s: 'synth', b: 'bass' };
-  const out = { spots: {}, align: null, fx: null };
+  const out = { spots: {}, align: null, fx: null, tempo: null };
   for (const tok of m[1].split('-')) {
     const a = /^a([01])$/.exec(tok);
     if (a) { if (out.align === null) out.align = a[1] === '1'; continue; }
     const e = /^e(\d)(\d)([0-8])$/.exec(tok);
     if (e) { if (!out.fx) out.fx = [Number(e[1]) / 9, Number(e[2]) / 9, Number(e[3]) / 8]; continue; }
+    const tp = /^t(\d{2,3})$/.exec(tok);
+    if (tp) { const n = Number(tp[1]); if (out.tempo == null && n >= 71 && n <= 141) out.tempo = n; continue; }
     const t = /^([dpsb])(?:0|(\d{2})\.(\d{1,2})(m?))$/.exec(tok);
     if (!t) continue;
     const inst = byLetter[t[1]];
@@ -1417,7 +1528,7 @@ function decodePreset(code) {
     if (!tr || !(k >= 0 && k < (tr.parts || []).length) || !accepts(spotOf(inst), tr.id)) continue;
     out.spots[inst] = { track: tr.id, part: k, muted: t[4] === 'm' };
   }
-  return Object.keys(out.spots).length || out.align !== null || out.fx ? out : null;
+  return Object.keys(out.spots).length || out.align !== null || out.fx || out.tempo ? out : null;
 }
 // The table as the code says, silent until a gesture (browsers need one)
 function applyPreset(p) {
@@ -1428,7 +1539,10 @@ function applyPreset(p) {
     s.track = v ? v.track : null; s.part = v ? v.part : 0; s.muted = v ? v.muted : false;
   });
   if (p.align !== null) { tempoOn = keyOn = p.align; eng.tempoMatch = p.align; }
-  KNOBS.forEach((k, i) => setKnob(k, p.fx ? p.fx[i] : k.bipolar ? 0.5 : 0));
+  KNOBS.forEach((k, i) => {
+    if (k.name === 'tempo') setKnob(k, p.tempo ? Math.log2(p.tempo / 100) + 0.5 : 0.5);
+    else setKnob(k, p.fx ? p.fx[i] : k.bipolar ? 0.5 : 0);
+  });
   presetPending = occupied().length > 0;
   if (presetPending) { hint = PRESET_HINT; started = true; }
   layout();
@@ -1519,19 +1633,47 @@ function drawKnobs() {
     line(k.x + Math.cos(a) * k.r * 0.25, k.y + Math.sin(a) * k.r * 0.25, k.x + Math.cos(a) * k.r * 0.8, k.y + Math.sin(a) * k.r * 0.8);
     noStroke();
     fill(on ? PAPER : FADED); textStyle(BOLD); textSize(11); textAlign(CENTER, CENTER);
-    const label = k.bipolar && on ? (p < 0.5 ? 'PASSE-BAS' : 'PASSE-HAUT') : k.label;
+    const label = k.onLabel && on ? k.onLabel(p) : k.label;
     text(label, k.x, k.y + k.r + 16);
-    if (k.bipolar) { // small marks at the ends: the low-pass side, the high-pass side
-      fill(on ? PAPER : FADED); textSize(9);
-      text('BAS', k.x - k.r - 12, k.y + k.r + 2); text('HAUT', k.x + k.r + 14, k.y + k.r + 2);
+    if (k.ends) { // small marks at the ends (filter: low / high; tempo: − / +)
+      fill(on ? PAPER : FADED); textSize(k.ends[0].length > 1 ? 9 : 13);
+      text(k.ends[0], k.x - k.r - 12, k.y + k.r + 2); text(k.ends[1], k.x + k.r + 14, k.y + k.r + 2);
     }
   });
+}
+// The tempo knob let go: on the next bar, every instrument again, stretched
+// to the new tempo (pitch back where it belongs, no jump to the loop's start)
+function settleTempo() {
+  if (running && occupied().length) launch(occupied());
 }
 const knobAt = (x, y) => KNOBS.find((k) => k.r && Math.hypot(x - k.x, y - (k.y + 6)) <= k.r + 22) || null;
 function setKnob(k, p) { // p: the position, 0..1
   p = Math.min(1, Math.max(0, p));
   if (k.bipolar && Math.abs(p - 0.5) < 0.03) p = 0.5; // a notch at noon
+  if (k.name === 'tempo') { // to the whole percent (the shared link's)
+    const pct = Math.round(2 ** (p - 0.5) * 100);
+    p = Math.log2(pct / 100) + 0.5;
+  }
   eng.fx.set(k.name, k.bipolar ? p * 2 - 1 : p);
+}
+
+// The effects at rest: reverb and delay at 0, filter and tempo at noon
+const knobRest = (k) => (k.bipolar ? 0.5 : 0);
+const fxAtRest = () => !eng || KNOBS.every((k) => Math.abs(knobPos(k) - knobRest(k)) < 1e-6);
+function drawResetButton() {
+  const r = buttons.reset;
+  if (!r) return;
+  const idle = fxAtRest();
+  fill(idle ? FADED : PAPER);
+  roughRect(r.x + 2, r.y + 8, r.w - 4, r.h - 16, 1390, 1);
+  fill(BLUE); textStyle(BOLD); textSize(12); textAlign(CENTER, CENTER);
+  text('↺ RESET', r.x + r.w / 2, r.y + r.h / 2 - 1);
+}
+function resetFx() {
+  const tempoMoved = Math.abs(knobPos(KNOBS[3]) - 0.5) > 1e-6;
+  KNOBS.forEach((k) => setKnob(k, knobRest(k)));
+  if (tempoMoved) settleTempo();
+  say('Effets remis à zéro');
 }
 
 function drawKeepButton() {
@@ -2267,13 +2409,16 @@ function down(e) {
   eng.unlock();
   if (onButton(buttons.play, x, y)) { drag = { kind: 'play' }; return; }
   if (buttons.dice && onButton(buttons.dice, x, y)) { drag = { kind: 'dice' }; return; }
+  const rs = buttons.reset;
+  if (rs && x >= rs.x && x <= rs.x + rs.w && y >= rs.y && y <= rs.y + rs.h) { drag = { kind: 'reset' }; return; }
   const kn = knobAt(x, y);
   if (kn) {
     const now = millis();
     if (lastKnobTap.k === kn && now - lastKnobTap.t < 380) {
       lastKnobTap = { k: null, t: 0 };
       setKnob(kn, kn.bipolar ? 0.5 : 0);
-      say(`${kn.label} : coupé`);
+      if (kn.name === 'tempo' && running) settleTempo();
+      say(kn.name === 'tempo' ? 'Tempo d\'origine' : `${kn.label} : coupé`);
       return;
     }
     lastKnobTap = { k: kn, t: now };
@@ -2353,7 +2498,12 @@ function up(e) {
   if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
   if (d.kind === 'mute') return toggle(d.s);
-  if (d.kind === 'knob') return;
+  if (d.kind === 'reset') return resetFx();
+  if (d.kind === 'knob') {
+    // the tempo: the table restarts at its new speed when the knob is let go
+    if (d.k.name === 'tempo' && running && knobPos(d.k) !== d.v0) { settleTempo(); say(d.k.onLabel()); }
+    return;
+  }
   if (d.kind === 'chip') {
     const { s, k } = d.chip;
     say(`${NAMES[s.inst]} : ${eng.byId[s.track].title}, partie ${k + 1}`);
