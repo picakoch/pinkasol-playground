@@ -618,7 +618,7 @@ let U = 1, VW = 0, VH = 0;
 // high-pass, owner 2026-11-24)
 const KNOBS = [
   { name: 'reverb', label: 'RÉVERB' }, { name: 'delay', label: 'DELAY' },
-  { name: 'filter', label: 'FILTRE', bipolar: true, ends: ['BAS', 'HAUT'], onLabel: (p) => (p < 0.5 ? 'PASSE-BAS' : 'PASSE-HAUT') },
+  { name: 'filter', label: 'FILTRE', bipolar: true, ends: ['BAS', 'HAUT'] }, // always "FILTRE" (owner)
   // the tempo: noon = as recorded, left slower, right faster; live while
   // turned (the pitch moves), then on the next bar stretched, pitch kept
   { name: 'tempo', label: 'TEMPO', bipolar: true, ends: ['−', '+'], onLabel: () => `TEMPO ${Math.round(eng.fx.speed * 100)} %` },
