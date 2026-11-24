@@ -55,6 +55,7 @@
 // song's parts to choose from, a mute button, and a card dropped on it goes
 // to that instrument (owner, 2026-11-24).
 const BLUE = '#174596', PAPER = '#fdfdfd', ORANGE = '#dc8d4e', FADED = '#7f97c7', DIM = '#b9c6e2';
+const GREY_A = 0.71; // PAPER at this alpha over BLUE ≈ DIM
 let INK = PAPER, INK0 = PAPER; // the instruments' paper: faded while silent or muted
 // p5 wraps the name in quotes: close and reopen them to pass a fallback list
 const FONT = 'Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif, "x';
@@ -1565,8 +1566,10 @@ function drawRow(row, X0, X1, top, h) {
     roughRect(X0 - 4, top + 1, X1 - X0 + 8, h - 2, 1350 + s.i, 1.5);
     fill(BLUE); roughRect(X0 - 1, top + 4, X1 - X0 + 2, h - 8, 1360 + s.i, 1.5);
   }
+  // greyed (empty or muted): paper at GREY_A over the blue is exactly DIM,
+  // the grey of a silent loop: one grey for "not heard"
   const grey = !id || s.muted;
-  if (grey) drawingContext.globalAlpha = 0.4;
+  if (grey) drawingContext.globalAlpha = GREY_A;
   // label: the instrument's icon, then the song's title
   instIcon(s.inst, X0 + 16, my, 16);
   const c = id ? cardById(id) : null;
@@ -1592,7 +1595,7 @@ function drawRow(row, X0, X1, top, h) {
   roughEllipse(bx, ly, 14, 14, 1340 + s.i, 0.6);
   speakerIcon(bx, ly, s.muted);
   rowBtns.push({ s, x: bx - MIN_TOUCH / 2, y: ly - MIN_TOUCH / 2, w: MIN_TOUCH, h: MIN_TOUCH });
-  if (grey) drawingContext.globalAlpha = 0.4;
+  if (grey) drawingContext.globalAlpha = GREY_A;
   const parts = partsOf(id), cur = s.part, ok = offered(id);
   const x0 = X0 + L.labelW, x1 = X1 - ROW_BTNS_W;
   const dur = Math.max(...parts.map((p) => p.end)) * 1.03;
@@ -1625,7 +1628,7 @@ function drawRow(row, X0, X1, top, h) {
       stroke(isCur ? ORANGE : FADED); strokeWeight(1);
       line(xs[i], up ? cy + 13 : cy - 13, (a + b) / 2, up ? ly - 3 : ly + 3);
       noStroke();
-      fill(isCur ? ORANGE : here ? PAPER : DIM);
+      fill(isCur ? ORANGE : here || grey ? PAPER : DIM);
       roughRect(xs[i] - cw / 2, cy - 13, cw, 26, 800 + k * 5 + c.i + s.i * 50, 1);
       fill(BLUE); textAlign(CENTER, CENTER); textSize(14);
       text(String(k + 1), xs[i], cy - 1);
