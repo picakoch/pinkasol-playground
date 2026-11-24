@@ -610,9 +610,15 @@ function layout() {
 // instrument plays it), play/stop and the random face. No strip, no
 // switches (they stay on), no sliders, one short line of hint
 const SHORT_HINT = 'Touchez une chanson · glissez-la sur un instrument';
-// ?compact=1: the phone's layout at any size (owner preview, 2026-11-24)
-const FORCE_COMPACT = /[?&]compact=1\b/.test(location.search);
-const isCompact = () => FORCE_COMPACT || width < 600 || height < 520;
+// The phone's layout at every size (owner, 2026-11-24), scaled up on big
+// screens: laid out on a virtual canvas of VW × VH, drawn at U times
+const isCompact = () => true;
+let U = 1, VW = 0, VH = 0;
+const KNOBS = [
+  { name: 'reverb', label: 'RÉVERB' }, { name: 'delay', label: 'DELAY' },
+  { name: 'high', label: 'PASSE-HAUT' }, { name: 'low', label: 'PASSE-BAS' },
+];
+let lastKnobTap = { k: null, t: 0 };
 let compactIssues = []; // texts that would not fit (tests)
 
 // The instruction, always there (people won't know what to do otherwise)
@@ -637,7 +643,9 @@ function fitLines(str, w, max = 12) {
   return { size: 9, lines: [s] }; // reported by the tests if it ever happens
 }
 function layoutCompact() {
-  const W = width, H = height;
+  U = Math.min(1.8, Math.max(1, Math.min(width / 520, height / 700)));
+  VW = width / U; VH = height / U;
+  const W = VW, H = VH;
   L.compact = true;
   chips.length = 0;
   pad = 8;
@@ -683,13 +691,23 @@ function layoutCompact() {
   L.arrowsH = short ? 0 : ARROWS_H;
   const gap = short ? 2 : 10;
   const cw = (W - 2 * pad) / 4;
-  const fixed = tbH + gap + hintH + tokensH + gap + bbH;
+  // the effects' knobs under the buttons, when the instruments keep >= 150 px
+  let kh = short ? 0 : 78;
+  if (H - 2 * pad - (tbH + gap + hintH + tokensH + gap + bbH) - kh < 150) kh = 0;
+  const fixed = tbH + kh + gap + hintH + tokensH + gap + bbH;
   const ch = Math.max(60, Math.min(H - 2 * pad - fixed, cw * 1.25 + 24 + (short ? 16 : L.arrowsH)));
   // the whole stack centred
   let y = Math.max(pad, (H - fixed - ch) / 2);
   buttons.play = { x: W / 2 - 36, y: y + tbH / 2, r: short ? 21 : 24 };
   buttons.dice = { x: W / 2 + 36, y: y + tbH / 2, r: short ? 19 : 22 };
   y += tbH;
+  const kgap = Math.min(110, (W - 2 * pad) / 4);
+  KNOBS.forEach((k, i) => {
+    k.r = kh ? 20 : 0;
+    k.x = W / 2 + (i - 1.5) * kgap;
+    k.y = y + 28;
+  });
+  y += kh;
   spots.forEach((s, i) => {
     s.w = cw - 6; s.h = ch - 6;
     s.cx = pad + cw * (i + 0.5);
@@ -727,33 +745,40 @@ const ARROWS_H = 40;
 function drawCompact() {
   background(BLUE);
   noStroke();
+  push();
+  scale(U);
+  drawCompactScaled();
+  pop();
+}
+function drawCompactScaled() {
   chips.length = 0;
   compactIssues = [];
   spots.forEach(drawSpotCompact);
   drawButtons();
+  drawKnobs();
   // the instruction above the tokens; a shared table waiting for a gesture,
   // or a passing message, take its place (on paper for the shared table)
   textAlign(CENTER, CENTER); textStyle(BOLD);
   let f = L.hintFit;
   const msg = presetPending ? PRESET_HINT : millis() < hintUntil ? tempHint : null;
   if (msg) {
-    const g = fitLines(msg, width - 2 * pad - (presetPending ? 20 : 0), 12);
+    const g = fitLines(msg, VW - 2 * pad - (presetPending ? 20 : 0), 12);
     if (g.lines.length <= f.lines.length) f = g;
   }
   textSize(f.size);
   const lh2 = f.size + 3, y0 = hintY - (f.lines.length - 1) * lh2 / 2;
   if (presetPending && f !== L.hintFit) {
     const w2 = Math.max(...f.lines.map((l) => textWidth(l))) + 20;
-    fill(PAPER); roughRect(width / 2 - w2 / 2, hintY - f.lines.length * lh2 / 2 - 4, w2, f.lines.length * lh2 + 8, 1310, 1);
+    fill(PAPER); roughRect(VW / 2 - w2 / 2, hintY - f.lines.length * lh2 / 2 - 4, w2, f.lines.length * lh2 + 8, 1310, 1);
     fill(BLUE);
   } else fill(PAPER);
   f.lines.forEach((l, i) => {
-    if (textWidth(l) > width - 2 * pad) compactIssues.push('hint ' + l);
-    text(l, width / 2, y0 + i * lh2);
+    if (textWidth(l) > VW - 2 * pad) compactIssues.push('hint ' + l);
+    text(l, VW / 2, y0 + i * lh2);
   });
   if (!eng) {
     fill(PAPER); textSize(14); textAlign(CENTER, CENTER);
-    text(loadError ? 'ERREUR : ' + loadError : 'CHARGEMENT…', width / 2, height * 0.75);
+    text(loadError ? 'ERREUR : ' + loadError : 'CHARGEMENT…', VW / 2, VH * 0.75);
     return;
   }
   const single = singleSong();
@@ -909,17 +934,20 @@ function encodePreset() {
     const n = eng.tracks.findIndex((t) => t.id === s.track) + 1;
     return `${l}${String(n).padStart(2, '0')}.${s.part + 1}${s.muted ? 'm' : ''}`;
   });
-  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}`;
+  const fxv = eng.fx.values, fx = KNOBS.map((k) => Math.round(fxv[k.name] * 9)).join('');
+  return '1~' + parts.join('-') + `-a${tempoOn && keyOn ? 1 : 0}` + (fx === '0000' ? '' : `-e${fx}`);
 }
 function decodePreset(code) {
   if (!eng || typeof code !== 'string' || !code.length || code.length > 200 || !/^[A-Za-z0-9._~-]+$/.test(code)) return null;
   const m = /^1~(.*)$/.exec(code);
   if (!m) return null;
   const byLetter = { d: 'drums', p: 'piano', s: 'synth', b: 'bass' };
-  const out = { spots: {}, align: null };
+  const out = { spots: {}, align: null, fx: null };
   for (const tok of m[1].split('-')) {
     const a = /^a([01])$/.exec(tok);
     if (a) { if (out.align === null) out.align = a[1] === '1'; continue; }
+    const e = /^e(\d{4})$/.exec(tok);
+    if (e) { if (!out.fx) out.fx = [...e[1]].map((d) => Number(d) / 9); continue; }
     const t = /^([dpsb])(?:0|(\d{2})\.(\d{1,2})(m?))$/.exec(tok);
     if (!t) continue;
     const inst = byLetter[t[1]];
@@ -930,7 +958,7 @@ function decodePreset(code) {
     if (!tr || !(k >= 0 && k < (tr.parts || []).length) || !accepts(spotOf(inst), tr.id)) continue;
     out.spots[inst] = { track: tr.id, part: k, muted: t[4] === 'm' };
   }
-  return Object.keys(out.spots).length || out.align !== null ? out : null;
+  return Object.keys(out.spots).length || out.align !== null || out.fx ? out : null;
 }
 // The table as the code says, silent until a gesture (browsers need one)
 function applyPreset(p) {
@@ -941,6 +969,7 @@ function applyPreset(p) {
     s.track = v ? v.track : null; s.part = v ? v.part : 0; s.muted = v ? v.muted : false;
   });
   if (p.align !== null) { tempoOn = keyOn = p.align; eng.tempoMatch = p.align; }
+  KNOBS.forEach((k, i) => eng.fx.set(k.name, p.fx ? p.fx[i] : 0));
   presetPending = occupied().length > 0;
   if (presetPending) { hint = PRESET_HINT; started = true; }
   layout();
@@ -1012,10 +1041,36 @@ window.addEventListener('message', (e) => {
 });
 const keepOpen = () => !$('keep').hidden;
 
+// The effects' knobs: a paper disc, its value as an orange arc (270°) and a
+// blue pointer; 0 = no effect. Drag up / right to turn, double-tap: 0
+const KA0 = Math.PI * 0.75, KA1 = Math.PI * 2.25;
+function drawKnobs() {
+  if (!eng) return;
+  const vals = eng.fx.values;
+  KNOBS.forEach((k, i) => {
+    if (!k.r) return;
+    const v = vals[k.name], a = KA0 + (KA1 - KA0) * v;
+    noFill(); strokeCap(ROUND);
+    stroke(FADED); strokeWeight(4); arc(k.x, k.y, k.r * 2 + 12, k.r * 2 + 12, KA0, KA1);
+    if (v > 0.002) { stroke(ORANGE); arc(k.x, k.y, k.r * 2 + 12, k.r * 2 + 12, KA0, a); }
+    noStroke();
+    fill(PAPER); roughEllipse(k.x, k.y, k.r, k.r, 1380 + i * 7, 0.8);
+    stroke(BLUE); strokeWeight(3.5);
+    line(k.x + Math.cos(a) * k.r * 0.25, k.y + Math.sin(a) * k.r * 0.25, k.x + Math.cos(a) * k.r * 0.8, k.y + Math.sin(a) * k.r * 0.8);
+    noStroke();
+    fill(v > 0.002 ? PAPER : FADED); textStyle(BOLD); textSize(11); textAlign(CENTER, CENTER);
+    text(k.label, k.x, k.y + k.r + 16);
+  });
+}
+const knobAt = (x, y) => KNOBS.find((k) => k.r && Math.hypot(x - k.x, y - (k.y + 6)) <= k.r + 22) || null;
+function setKnob(k, v) {
+  eng.fx.set(k.name, v);
+}
+
 function drawKeepButton() {
   const k = buttons.keep;
   if (!k || !k.w) return;
-  const hot = !drag && mouseX >= k.x && mouseX <= k.x + k.w && mouseY >= k.y && mouseY <= k.y + k.h;
+  const hot = !drag && (mouseX / U) >= k.x && (mouseX / U) <= k.x + k.w && (mouseY / U) >= k.y && (mouseY / U) <= k.y + k.h;
   fill(PAPER);
   roughRect(k.x + 2, k.y + 4, k.w - 4, k.h - 8, 1300, 1);
   textStyle(BOLD); textSize(13); textAlign(CENTER, CENTER);
@@ -1071,7 +1126,8 @@ function setup() {
 function windowResized() { resizeCanvas(windowWidth, windowHeight); layout(); }
 
 function draw() {
-  if (L.compact) return drawCompact();
+  if (!L.compact) layout();
+  return drawCompact();
   background(BLUE);
   noStroke();
   spots.forEach(drawSpot);
@@ -1125,14 +1181,14 @@ function drawHint() {
 }
 
 function hovering(c) {
-  return mouseX >= c.x && mouseX <= c.x + c.w && mouseY >= c.y && mouseY <= c.y + c.h;
+  return (mouseX / U) >= c.x && (mouseX / U) <= c.x + c.w && (mouseY / U) >= c.y && (mouseY / U) <= c.y + c.h;
 }
 
 function drawButtons() {
   const ph = eng && eng.phase();
   const beat = running && ph ? Math.pow(1 - ph.beat, 3) : 0;
   const b = buttons.play;
-  const hot = !drag && dist(mouseX, mouseY, b.x, b.y) < b.r + 4;
+  const hot = !drag && dist((mouseX / U), (mouseY / U), b.x, b.y) < b.r + 4;
   const R = b.r * (1 + beat * 0.06) + (hot ? 2 : 0);
   fill(PAPER);
   roughEllipse(b.x, b.y, R, R, 900, 1.4);
@@ -1146,7 +1202,7 @@ function drawButtons() {
   // orange star, cut out of the cover (img/cover-medium.webp: in the tile,
   // the cover from the site's own media library). Pops and turns when pressed
   const d = buttons.dice;
-  const dhot = !drag && dist(mouseX, mouseY, d.x, d.y) < d.r + 4;
+  const dhot = !drag && dist((mouseX / U), (mouseY / U), d.x, d.y) < d.r + 4;
   const since = (millis() - hatPop) / 1000;
   const lift = since < 0.45 ? Math.sin(Math.PI * since / 0.45) : 0;
   const S = d.r * 2.3 * (1 + lift * 0.18 + (dhot ? 0.05 : 0));
@@ -1717,7 +1773,7 @@ function drawCard(c, x, y, w, h, rot, lifted) {
 // ---------- pointer (mouse and touch) ----------
 function pos(e) {
   const r = e.target.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
+  return { x: (e.clientX - r.left) / U, y: (e.clientY - r.top) / U };
 }
 function cardAt(x, y) {
   for (let i = cards.length - 1; i >= 0; i--) {
@@ -1743,6 +1799,20 @@ function down(e) {
   eng.unlock();
   if (onButton(buttons.play, x, y)) { drag = { kind: 'play' }; return; }
   if (onButton(buttons.dice, x, y)) { drag = { kind: 'dice' }; return; }
+  const kn = knobAt(x, y);
+  if (kn) {
+    const now = millis();
+    if (lastKnobTap.k === kn && now - lastKnobTap.t < 380) {
+      lastKnobTap = { k: null, t: 0 };
+      setKnob(kn, 0);
+      say(`${kn.label} : coupé`);
+      return;
+    }
+    lastKnobTap = { k: kn, t: now };
+    drag = { kind: 'knob', k: kn, x0: x, y0: y, v0: eng.fx.values[kn.name] };
+    e.target.setPointerCapture(e.pointerId);
+    return;
+  }
   const kp = buttons.keep;
   if (kp && x >= kp.x && x <= kp.x + kp.w && y >= kp.y && y <= kp.y + kp.h) { drag = { kind: 'keep' }; return; }
   if (L.compact) { // the ‹ › under an instrument
@@ -1789,6 +1859,10 @@ function down(e) {
   if (drag) e.target.setPointerCapture(e.pointerId);
 }
 function move(e) {
+  if (drag && drag.kind === 'knob') {
+    const { x, y } = pos(e);
+    return setKnob(drag.k, drag.v0 + ((drag.y0 - y) + (x - drag.x0)) / 140);
+  }
   if (drag && drag.kind === 'slider') return setVol(drag.s, pos(e).y);
   if (!drag || !drag.card) return;
   const { x, y } = pos(e);
@@ -1811,6 +1885,7 @@ function up(e) {
   if (d.kind === 'tempo') return toggleAlign();
   if (d.kind === 'key') return toggleKey();
   if (d.kind === 'mute') return toggle(d.s);
+  if (d.kind === 'knob') return;
   if (d.kind === 'chip') {
     const { s, k } = d.chip;
     say(`${NAMES[s.inst]} : ${eng.byId[s.track].title}, partie ${k + 1}`);
