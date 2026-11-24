@@ -785,7 +785,8 @@ function drawCompactScaled() {
     text(loadError ? 'ERREUR : ' + loadError : 'CHARGEMENT…', VW / 2, VH * 0.75);
     return;
   }
-  const single = singleSong();
+  // an orange ring: every song on at least one instrument (owner, 2026-11-24)
+  const onTable = new Set(occupied().map((s) => s.track));
   for (const c of cards) {
     if (drag && drag.card === c && !drag.from && drag.moved) {
       fill(255, 255, 255, 40); ellipse(c.x + c.w / 2, c.y + L.tokD / 2, L.tokD);
@@ -793,7 +794,7 @@ function drawCompactScaled() {
     }
     if (anims.some((a) => a.card === c)) continue;
     c.shake *= 0.9;
-    drawToken(c, c.x + c.w / 2 + Math.sin(frameCount * 0.6) * c.shake * 3, c.y + L.tokD / 2, L.tokD, false, c.id === single);
+    drawToken(c, c.x + c.w / 2 + Math.sin(frameCount * 0.6) * c.shake * 3, c.y + L.tokD / 2, L.tokD, false, onTable.has(c.id));
   }
   for (let i = anims.length - 1; i >= 0; i--) {
     const a = anims[i];
