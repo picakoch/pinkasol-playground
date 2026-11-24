@@ -610,7 +610,9 @@ function layout() {
 // instrument plays it), play/stop and the random face. No strip, no
 // switches (they stay on), no sliders, one short line of hint
 const SHORT_HINT = 'Touchez une chanson · glissez-la sur un instrument';
-const isCompact = () => width < 600 || height < 520;
+// ?compact=1: the phone's layout at any size (owner preview, 2026-11-24)
+const FORCE_COMPACT = /[?&]compact=1\b/.test(location.search);
+const isCompact = () => FORCE_COMPACT || width < 600 || height < 520;
 let compactIssues = []; // texts that would not fit (tests)
 
 // The instruction, always there (people won't know what to do otherwise)
